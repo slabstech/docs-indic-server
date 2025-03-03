@@ -12,8 +12,11 @@ RUN apt-get update && apt-get install -y \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-COPY moondream_requirements.txt .
-RUN pip install --no-cache-dir -r moondream_requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pixtral_requirements.txt .
+RUN pip install --no-cache-dir -r pixtral_requirements.txt
 
 COPY . .
 
