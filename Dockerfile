@@ -9,14 +9,15 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     sudo \
     wget libvips\
+    poppler-utils ttf-mscorefonts-installer msttcorefonts fonts-crosextra-caladea fonts-crosextra-carlito gsfonts lcdf-typetools \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY pixtral_requirements.txt .
-RUN pip install --no-cache-dir -r pixtral_requirements.txt
+#COPY pixtral_requirements.txt .
+#RUN pip install --no-cache-dir -r pixtral_requirements.txt
 
 COPY . .
 
