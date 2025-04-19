@@ -136,7 +136,6 @@ async def ocr_image(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
     
-
 @app.post("/summarize-pdf/", response_model=dict)
 async def summarize_pdf(file: UploadFile = File(...), page_number: int = 1):
     """
@@ -152,7 +151,10 @@ async def summarize_pdf(file: UploadFile = File(...), page_number: int = 1):
     try:
         # Extract text using existing endpoint logic
         text_response = await extract_text_from_pdf(file, page_number)
-        extracted_text = text_response["page_content"]
+        # Extract content from JSONResponse
+        extracted_text = text_response.body.decode("utf-8")  # Get raw JSON string
+        extracted_json = json.loads(extracted_text)  # Parse JSON string to dict
+        extracted_text = extracted_json["page_content"]
 
         # Generate summary using OpenAI chat completion
         summary_response = openai_client.chat.completions.create(
@@ -175,7 +177,8 @@ async def summarize_pdf(file: UploadFile = File(...), page_number: int = 1):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
-
+    
+    
 @app.get("/")
 async def root():
     """Root endpoint for health check."""
