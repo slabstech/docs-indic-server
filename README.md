@@ -43,6 +43,7 @@ Document parser for Indian languages
   - vllm serve google/gemma-3-4b-it
   - vllm serve reducto/RolmOCR
   - vllm serve google/gemma-3-12b-it
+  - vllm serve vikhyatk/moondream2 --trust-remote-code
 
 
 ## Download Qwen VL
