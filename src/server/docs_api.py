@@ -20,9 +20,9 @@ app = FastAPI(
     title="Combined OCR API",
     description=(
         "API for extracting text from PDF pages and PNG images using RolmOCR, with functionality to "
-        "summarize PDF content, process it with custom prompts, or translate summaries to Kannada. "
-        "Supports text extraction from a single PDF page, OCR for PNG images, summarization of a single PDF page, "
-        "custom prompt-based processing, and translation of summaries to Kannada."
+        "summarize PDF content, process it with custom prompts, translate summaries to Kannada, or translate "
+        "extracted Kannada text to English. Supports text extraction from a single PDF page, OCR for PNG images, "
+        "summarization of a single PDF page, custom prompt-based processing, and translation between Kannada and English."
     ),
     version="1.0.0"
 )
@@ -66,6 +66,14 @@ class SummarizePDFKannadaRequest(BaseModel):
     page_number: int = Field(
         default=1,
         description="The page number to extract, summarize, and translate to Kannada (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
+    )
+
+class TranslatePDFKannadaToEnglishRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract and translate from Kannada to English (1-based indexing). Must be a positive integer.",
         ge=1,
         example=1
     )
@@ -510,6 +518,94 @@ async def summarize_pdf_kannada(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF, generating summary, or translating: {str(e)}")
+
+@app.post(
+    "/translate-pdf-kannada-to-english/",
+    response_model=dict,
+    summary="Extract and translate text from Kannada to English from a single PDF page",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR and translates it from Kannada to English "
+        "using an external translation API."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text (in Kannada), the translated text (in English), and the processed page number."
+    )
+)
+async def translate_pdf_kannada_to_english(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=TranslatePDFKannadaToEnglishRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    """
+    Extract text from a specified page of a PDF file and translate it from Kannada to English.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract and translate (1-based indexing). Defaults to 1.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page (in Kannada).
+            - english_text: The extracted text translated to English.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, translation fails, or processing fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "ದಾಖಲೆಯು ಚರ್ಚಿಸುತ್ತದೆ... [Kannada text]",
+            "english_text": "The document discusses... [translated text]",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_text)
+        extracted_text = extracted_json["page_content"]
+
+        # Translate extracted text from Kannada to English using external API
+        translation_url = "http://0.0.0.0:7861/translate?src_lang=kan_Knda&tgt_lang=eng_Latn"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "sentences": [extracted_text],
+            "src_lang": "kan_Knda",
+            "tgt_lang": "eng_Latn"
+        }
+        try:
+            response = requests.post(translation_url, headers=headers, json=payload)
+            response.raise_for_status()  # Raise exception for bad status codes
+            translation_data = response.json()
+            english_text = translation_data["translations"][0]
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Translation API request failed: {str(e)}")
+        except (KeyError, IndexError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid translation API response: {str(e)}")
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "english_text": english_text,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or translating: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
