@@ -4,16 +4,27 @@
 Document parser for Indian languages
 
 ## Table of Contents
-- [Usage](#usage)
+- [Features](#features)
 - [Getting Started - Development](#getting-started---development)
 - [Downloading Model](#downloading-indic-model)
 - [Running with FastAPI Server](#running-with-fastapi-server)
 - [Evaluating Results](#evaluating-results)
 - [Citations](#citations)
 
+### Features 
+  - Extract text from PDF - Single Page, Multiple, Full
+  - Extract text from Image
+  - Summary text from Image/PDF
+    - English
+    - Kannada
+    - German
+  - Recreate PDF -> Scanned doc to clean PDF
+  - Convert PDF ->
+    - English to Kannada
+    - Kannada to English
 
 
-### For Development (Local)
+### For Development 
 - **Prerequisites**: Python 3.6+
 - **Steps**:
   1. **Create a virtual environment**:
@@ -29,29 +40,68 @@ Document parser for Indian languages
   venv\Scripts\activate
   ```
   3. **Install dependencies**:
-  - For GPU
-      ```bash
-      pip install -r requirements.txt
-      ```
-  - For CPU only
-      ```bash
-      pip install -r cpu-requirements.txt
-      ```
+  - ```bash
+    pip install -r requirements.txt
+    ```
+
+- Backend Server  - Select based on GPU VRAM
+  - ```bash
+    vllm serve google/gemma-3-4b-it
+    ```
+  - ```bash
+    vllm serve reducto/RolmOCR
+    ```
+  - ```bash
+    vllm serve google/gemma-3-12b-it
+    ```
 
 
-- Backend Server 
-  - vllm serve google/gemma-3-4b-it
-  - vllm serve reducto/RolmOCR
-  - vllm serve google/gemma-3-12b-it
-  - vllm serve vikhyatk/moondream2 --trust-remote-code
+### Running with FastAPI Server
+- 
+  ```bash
+  python src/server/docs_api.py --port 7860 --host 0.0.0.0
+  ```
 
+
+### GPU server setup
+  - Terminal 1 
+    ```bash
+    git clone https://github.com/slabstech/docs-indic-server.git
+    cd docs-indic-server
+    chmod +x install-script.sh
+    export HF_TOKEN='YOUR-HF-TOKEN'
+    vllm serve google/gemma-3-4b-it
+    ```
+  - Terminal 2
+    ```bash
+    source venv/bin/activate
+    export HF_TOKEN='YOUR-HF-TOKEN'
+    python src/server/docs_api.py --port 7860 --host 0.0.0.0
+    ```
+
+
+## Contributing
+
+We welcome contributions! Please read the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute to this project.
+
+Also you can join the [discord group](https://discord.gg/WZMCerEZ2P) to collaborate
+
+- Reference
+    - [HF - moondream](https://huggingface.co/vikhyatk/moondream2)
+    - [source - moondream](https://github.com/vikhyat/moondream)
+    - [moondream-blog](https://moondream.ai/blog/introducing-a-new-moondream-1-9b-and-gpu-support)
+    - [pixtral-12-b-2409](https://huggingface.co/mistralai/Pixtral-12B-2409)
+
+
+
+
+<!-- 
 
 ## Download Qwen VL
 
 ```bash download_model.sh
 huggingface_cli download google/gemma-3-4b-it
 ```
-
 
 ## Download Gemma
 
@@ -73,19 +123,6 @@ huggingface_cli  vikhyatk/moondream2
 ```
 Model Size - 4GB
 
-## Running with FastAPI Server
-Run the server using FastAPI
-- for GPU
-  ```bash
-  python src/docs_api.py --port 7860 --host 0.0.0.0 --device gpu
-  ```
-- for CPU only
-  ```bash
-  python src/docs_api.py --port 7860 --host 0.0.0.0 --device cpu
-  ```
-
-
-
 ## Getting Started - Development
 
 - For moondream, libvips system library is required 
@@ -93,20 +130,7 @@ Run the server using FastAPI
   sudo apt-get update && sudo apt-get install libvips
   ```
 
-## Contributing
 
-We welcome contributions! Please read the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute to this project.
-
-Also you can join the [discord group](https://discord.gg/WZMCerEZ2P) to collaborate
-
-- Reference
-    - [HF - moondream](https://huggingface.co/vikhyatk/moondream2)
-    - [source - moondream](https://github.com/vikhyat/moondream)
-    - [moondream-blog](https://moondream.ai/blog/introducing-a-new-moondream-1-9b-and-gpu-support)
-    - [pixtral-12-b-2409](https://huggingface.co/mistralai/Pixtral-12B-2409)
-
-
-<!-- 
 
 ## Evaluating Results
 You can evaluate the ASR transcription results using `curl` commands. Below are examples for Kannada audio samples.
@@ -144,7 +168,7 @@ curl -s -H "content-type: application/json" localhost:7860/v1/audio/speech -d '{
   docker compose -f cpu-compose.yaml up -d
   ```
 
-
+#  - vllm serve vikhyatk/moondream2 --trust-remote-code
 
 
 ## Building Docker Image
