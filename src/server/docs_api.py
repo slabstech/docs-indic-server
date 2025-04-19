@@ -7,6 +7,7 @@ from io import BytesIO
 from PIL import Image
 import tempfile
 import os
+import requests  # Added for external API call
 from typing import List, Union
 from pypdf import PdfReader
 from pydantic import BaseModel, Field
@@ -18,9 +19,10 @@ from olmocr.prompts.anchor import get_anchor_text
 app = FastAPI(
     title="Combined OCR API",
     description=(
-        "API for extracting text from PDF pages and PNG images using RolmOCR, with additional functionality "
-        "to summarize PDF content or process it with custom prompts. Supports text extraction from a single PDF page, "
-        "OCR for PNG images, summarization of a single PDF page, and custom prompt-based processing of a single PDF page."
+        "API for extracting text from PDF pages and PNG images using RolmOCR, with functionality to "
+        "summarize PDF content, process it with custom prompts, or translate summaries to Kannada. "
+        "Supports text extraction from a single PDF page, OCR for PNG images, summarization of a single PDF page, "
+        "custom prompt-based processing, and translation of summaries to Kannada."
     ),
     version="1.0.0"
 )
@@ -57,6 +59,14 @@ class CustomPromptPDFRequest(BaseModel):
     prompt: str = Field(
         description="The custom prompt to process the extracted text. For example, 'Summarize in 2 sentences' or 'List key points'.",
         example="Summarize the text in 2 sentences."
+    )
+
+class SummarizePDFKannadaRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract, summarize, and translate to Kannada (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
     )
 
 def encode_image(image: BytesIO) -> str:
@@ -407,6 +417,96 @@ async def custom_prompt_pdf(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating response: {str(e)}")
+
+@app.post(
+    "/summarize-pdf-kannada/",
+    response_model=dict,
+    summary="Extract, summarize, and translate summary to Kannada from a single PDF page",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR, generates a 3-5 sentence summary "
+        "in English using chat completion, and translates the summary to Kannada using an external translation API."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text, the English summary, the Kannada summary, and the processed page number."
+    )
+)
+async def summarize_pdf_kannada(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=SummarizePDFKannadaRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    """
+    Extract text from a specified page of a PDF file, summarize it, and translate the summary to Kannada.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract, summarize, and translate (1-based indexing). Defaults to 1.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page.
+            - english_summary: A 3-5 sentence summary in English.
+            - kannada_summary: The English summary translated to Kannada.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, translation fails, or processing fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "Text from page 1",
+            "english_summary": "The document discusses... [3-5 sentence summary]",
+            "kannada_summary": "ದಾಖಲೆಯು ಚರ್ಚಿಸುತ್ತದೆ... [translated summary]",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Extract text and generate English summary using existing endpoint logic
+        summary_response = await summarize_pdf(file, page_number)
+        extracted_text = summary_response["original_text"]
+        english_summary = summary_response["summary"]
+
+        # Translate English summary to Kannada using external API
+        translation_url = "http://0.0.0.0:7861/translate?src_lang=eng_Latn&tgt_lang=kan_Knda"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "sentences": [english_summary],
+            "src_lang": "eng_Latn",
+            "tgt_lang": "kan_Knda"
+        }
+        try:
+            response = requests.post(translation_url, headers=headers, json=payload)
+            response.raise_for_status()  # Raise exception for bad status codes
+            translation_data = response.json()
+            kannada_summary = translation_data["translations"][0]
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Translation API request failed: {str(e)}")
+        except (KeyError, IndexError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid translation API response: {str(e)}")
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "english_summary": english_summary,
+            "kannada_summary": kannada_summary,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF, generating summary, or translating: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

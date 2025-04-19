@@ -85,7 +85,8 @@ Document parser for Indian languages
     cd indic-translate-server
     python3.10 -m venv venv
     source venv/bin/activate
-    pip install -r requirements.txt
+    pip install -r server-requirements.txt
+    export HF_TOKEN='YOUR-HF-TOKEN'
     huggingface-cli download ai4bharat/indictrans2-indic-en-dist-200M
     huggingface-cli download ai4bharat/indictrans2-en-indic-dist-200M
     python src/server/translate_api.py --port 7861 --host 0.0.0.0 --device cuda --use_distilled
