@@ -1,121 +1,143 @@
-import time
-from contextlib import asynccontextmanager
-from typing import Annotated, Any, OrderedDict, List
-import torch
-from fastapi import Body, FastAPI, HTTPException, Response, UploadFile, File
-from transformers import AutoTokenizer, AutoFeatureExtractor, set_seed, AutoModelForCausalLM
-import numpy as np
-from config import SPEED, ResponseFormat, config
-from logger import logger
-import uvicorn
-import argparse
-from fastapi.responses import RedirectResponse, StreamingResponse
-import io
-import zipfile
-import os
-import logging
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+from openai import OpenAI
+import base64
+import json
+from io import BytesIO
 from PIL import Image
+import tempfile
+import os
+from olmocr.data.renderpdf import render_pdf_to_base64png
+from olmocr.prompts import build_finetuning_prompt
+from olmocr.prompts.anchor import get_anchor_text
 
-# https://github.com/huggingface/parler-tts?tab=readme-ov-file#usage
-if torch.cuda.is_available():
-    device = "cuda:0"
-    logger.info("GPU will be used for inference")
-else:
-    device = "cpu"
-    logger.info("CPU will be used for inference")
-torch_dtype = torch.float16 if device != "cpu" else torch.float32
+# Initialize FastAPI app
+app = FastAPI(
+    title="Combined OCR API",
+    description="API for extracting text from PDF pages and PNG images using RolmOCR",
+    version="1.0.0"
+)
 
-# Check CUDA availability and version
-cuda_available = torch.cuda.is_available()
-cuda_version = torch.version.cuda if cuda_available else None
+# Initialize OpenAI client for RolmOCR
+openai_client = OpenAI(api_key="123", base_url="http://localhost:8000/v1")
+rolm_model = "reducto/RolmOCR"
 
-if torch.cuda.is_available():
-    device = torch.cuda.current_device()
-    capability = torch.cuda.get_device_capability(device)
-    compute_capability_float = float(f"{capability[0]}.{capability[1]}")
-    print(f"CUDA version: {cuda_version}")
-    print(f"CUDA Compute Capability: {compute_capability_float}")
-else:
-    print("CUDA is not available on this system.")
+def encode_image(image: BytesIO) -> str:
+    """Encode image bytes to base64 string."""
+    return base64.b64encode(image.read()).decode("utf-8")
 
-app = FastAPI()
+def ocr_page_with_rolm(img_base64: str) -> str:
+    """Perform OCR on the provided base64 image using RolmOCR via OpenAI API."""
+    try:
+        response = openai_client.chat.completions.create(
+            model=rolm_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_base64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Return the plain text representation of this document as if you were reading it naturally.\n",
+                        },
+                    ],
+                }
+            ],
+            temperature=0.2,
+            max_tokens=4096
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RolmOCR processing failed: {str(e)}")
 
-# Lazy loading of the model
-model = None
+@app.post("/extract-text/", response_model=dict)
+async def extract_text_from_pdf(file: UploadFile = File(...), page_number: int = 1):
+    """
+    Extract text from a specific page of a PDF file using RolmOCR.
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global model
-    # Load the model
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract text from (1-based indexing).
 
-    model = AutoModelForCausalLM.from_pretrained("vikhyatk/moondream2",revision="2025-01-09", trust_remote_code=True).to(device, dtype=torch_dtype)
+    Returns:
+        JSONResponse: The extracted page content or error details.
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    '''
-    model = AutoModelForCausalLM.from_pretrained(
-        "vikhyatk/moondream2",
-        revision="2025-01-09",
-        trust_remote_code=True,
-        device_map={"": device}
-    )
-    '''
-    yield
-    # Clean up the model, if needed
-    model = None
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
 
-app.router.lifespan_context = lifespan
+        # Render the specified page to an image
+        try:
+            image_base64 = render_pdf_to_base64png(
+                temp_file_path, page_number, target_longest_image_dim=1024
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
+
+        # Perform OCR using RolmOCR
+        try:
+            page_content = ocr_page_with_rolm(image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+
+        # Clean up temporary file
+        os.remove(temp_file_path)
+
+        return JSONResponse(content={"page_content": page_content})
+
+    except Exception as e:
+        # Clean up in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+@app.post("/ocr", response_model=dict)
+async def ocr_image(file: UploadFile = File(...)):
+    """
+    Upload a PNG image and extract text using RolmOCR.
+
+    Args:
+        file (UploadFile): The PNG image to process.
+
+    Returns:
+        dict: The extracted text.
+    """
+    # Validate file type
+    if not file.content_type.startswith("image/png"):
+        raise HTTPException(status_code=400, detail="Only PNG images are supported")
+
+    try:
+        # Read image file
+        image_bytes = await file.read()
+        image = BytesIO(image_bytes)
+        
+        # Encode to base64
+        img_base64 = encode_image(image)
+        
+        # Perform OCR
+        text = ocr_page_with_rolm(img_base64)
+        
+        return {"extracted_text": text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 @app.get("/")
-async def home():
-    return RedirectResponse(url="/docs")
-
-@app.post("/caption/")
-async def caption_image(file: UploadFile = File(...), length: str = "normal"):
-    global model
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    image = Image.open(file.file)
-    if length == "short":
-        caption = model.caption(image, length="short")["caption"]
-    else:
-        caption = model.caption(image, length="normal")
-    return {"caption": caption}
-
-@app.post("/visual_query/")
-async def visual_query(file: UploadFile = File(...), query: str = Body(...)):
-    global model
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    image = Image.open(file.file)
-    answer = model.query(image, query)["answer"]
-    return {"answer": answer}
-
-@app.post("/detect/")
-async def detect_objects(file: UploadFile = File(...), object_type: str = "face"):
-    global model
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    image = Image.open(file.file)
-    objects = model.detect(image, object_type)["objects"]
-    return {"objects": objects}
-
-@app.post("/point/")
-async def point_objects(file: UploadFile = File(...), object_type: str = "person"):
-    global model
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    image = Image.open(file.file)
-    points = model.point(image, object_type)["points"]
-    return {"points": points}
+async def root():
+    """Root endpoint for health check."""
+    return {"message": "Combined OCR API is running"}
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the FastAPI server for TTS.")
-    parser.add_argument("--port", type=int, default=7860, help="Port to run the server on.")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on.")
-    parser.add_argument("--device", type=str, default="cuda", help="Device type to run the model on (cuda or cpu).")
-    args = parser.parse_args()
-
-    uvicorn.run(app, host=args.host, port=args.port)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7860)
