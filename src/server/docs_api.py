@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 import base64
@@ -7,23 +7,76 @@ from io import BytesIO
 from PIL import Image
 import tempfile
 import os
+import requests
+from typing import List, Union
+from pypdf import PdfReader
+from pydantic import BaseModel, Field
 from olmocr.data.renderpdf import render_pdf_to_base64png
 from olmocr.prompts import build_finetuning_prompt
 from olmocr.prompts.anchor import get_anchor_text
 
-# Initialize FastAPI app
+# Initialize FastAPI app with enhanced metadata
 app = FastAPI(
     title="Combined OCR API",
-    description="API for extracting text from PDF pages and PNG images using RolmOCR",
+    description=(
+        "API for extracting text from PDF pages and PNG images using RolmOCR, with functionality to "
+        "summarize PDF content, process it with custom prompts, translate summaries to Kannada, or translate "
+        "extracted Kannada text to English. Supports text extraction from a single PDF page, OCR for PNG images, "
+        "summarization of a single PDF page, custom prompt-based processing, and translation between Kannada and English."
+    ),
     version="1.0.0"
 )
 
 # Initialize OpenAI client for RolmOCR
 openai_client = OpenAI(api_key="123", base_url="http://localhost:8000/v1")
 
-#rolm_model = "reducto/RolmOCR"
-rolm_model = "google/gemma-3-12b-it"
+#rolm_model = "google/gemma-3-12b-it"   - for H100 only
+rolm_model = "google/gemma-3-4b-it"   # for A100 only
 
+# Pydantic models for request parameters
+class ExtractTextRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract text from (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
+    )
+
+class SummarizePDFRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract and summarize (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
+    )
+
+class CustomPromptPDFRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract and process with the custom prompt (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
+    )
+    prompt: str = Field(
+        description="The custom prompt to process the extracted text. For example, 'Summarize in 2 sentences' or 'List key points'.",
+        example="Summarize the text in 2 sentences."
+    )
+
+class SummarizePDFKannadaRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract, summarize, and translate to Kannada (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
+    )
+
+class TranslatePDFKannadaToEnglishRequest(BaseModel):
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract and translate from Kannada to English (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
+    )
 
 def encode_image(image: BytesIO) -> str:
     """Encode image bytes to base64 string."""
@@ -56,17 +109,64 @@ def ocr_page_with_rolm(img_base64: str) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"RolmOCR processing failed: {str(e)}")
 
-@app.post("/extract-text/", response_model=dict)
-async def extract_text_from_pdf(file: UploadFile = File(...), page_number: int = 1):
+@app.get(
+    "/",
+    summary="Health check endpoint",
+    description="Returns a simple message to confirm that the Combined OCR API is running.",
+    response_description="A JSON object with a confirmation message."
+)
+async def root():
+    """
+    Root endpoint for health check.
+
+    Returns:
+        dict: A JSON object containing a message indicating the API status.
+
+    Example:
+        ```json
+        {"message": "Combined OCR API is running"}
+        ```
+    """
+    return {"message": "Combined OCR API is running"}
+
+@app.post(
+    "/extract-text/",
+    response_model=dict,
+    summary="Extract text from a PDF page",
+    description=(
+        "Extracts text from a specific page of a PDF file using RolmOCR. The page is rendered as an image, "
+        "and OCR is performed to extract the text content."
+    ),
+    response_description="A JSON object containing the extracted text from the specified page."
+)
+async def extract_text_from_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=ExtractTextRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
     """
     Extract text from a specific page of a PDF file using RolmOCR.
 
     Args:
         file (UploadFile): The PDF file to process.
-        page_number (int): The page number to extract text from (1-based indexing).
+        page_number (int): The page number to extract text from (1-based indexing). Defaults to 1.
 
     Returns:
-        JSONResponse: The extracted page content or error details.
+        JSONResponse: A dictionary containing:
+            - page_content: The extracted text from the specified page.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, or processing fails.
+
+    Example:
+        ```json
+        {"page_content": "Extracted text from the PDF page"}
+        ```
     """
     try:
         # Validate file type
@@ -106,8 +206,17 @@ async def extract_text_from_pdf(file: UploadFile = File(...), page_number: int =
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-@app.post("/ocr", response_model=dict)
-async def ocr_image(file: UploadFile = File(...)):
+@app.post(
+    "/ocr",
+    response_model=dict,
+    summary="Extract text from a PNG image",
+    description=(
+        "Performs OCR on a PNG image using RolmOCR to extract text content. The image is encoded to base64 "
+        "and processed via the OpenAI API."
+    ),
+    response_description="A JSON object containing the extracted text from the image."
+)
+async def ocr_image(file: UploadFile = File(..., description="The PNG image to process. Must be a valid PNG.")):
     """
     Upload a PNG image and extract text using RolmOCR.
 
@@ -115,7 +224,16 @@ async def ocr_image(file: UploadFile = File(...)):
         file (UploadFile): The PNG image to process.
 
     Returns:
-        dict: The extracted text.
+        dict: A dictionary containing:
+            - extracted_text: The text extracted from the image.
+
+    Raises:
+        HTTPException: If the file is not a PNG or processing fails.
+
+    Example:
+        ```json
+        {"extracted_text": "Text extracted from the PNG image"}
+        ```
     """
     # Validate file type
     if not file.content_type.startswith("image/png"):
@@ -136,10 +254,358 @@ async def ocr_image(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
-@app.get("/")
-async def root():
-    """Root endpoint for health check."""
-    return {"message": "Combined OCR API is running"}
+@app.post(
+    "/summarize-pdf/",
+    response_model=dict,
+    summary="Extract and summarize text from a single PDF page",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR and generates a 3-5 sentence summary "
+        "using chat completion."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text, a summary, and the processed page number."
+    )
+)
+async def summarize_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=SummarizePDFRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    """
+    Extract text from a specified page of a PDF file and generate a summary using RolmOCR and chat completion.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract and summarize (1-based indexing). Defaults to 1.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page.
+            - summary: A 3-5 sentence summary of the extracted text.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, or processing fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "Text from page 1",
+            "summary": "The document discusses... [3-5 sentence summary]",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_text)
+        extracted_text = extracted_json["page_content"]
+
+        # Generate summary using OpenAI chat completion
+        summary_response = openai_client.chat.completions.create(
+            model=rolm_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Summarize the following text in 3-5 sentences:\n\n{extracted_text}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+        summary = summary_response.choices[0].message.content
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "summary": summary,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
+
+@app.post(
+    "/custom-prompt-pdf/",
+    response_model=dict,
+    summary="Extract and process text from a single PDF page with a custom prompt",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR and processes it with a user-provided prompt "
+        "using chat completion. The custom prompt allows flexible text processing, such as summarization, key point extraction, or translation."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text, the response generated by the custom prompt, and the processed page number."
+    )
+)
+async def custom_prompt_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=CustomPromptPDFRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    ),
+    prompt: str = Body(
+        ...,
+        embed=True,
+        description=CustomPromptPDFRequest.model_fields["prompt"].description,
+        examples=CustomPromptPDFRequest.model_fields["prompt"].examples
+    )
+):
+    """
+    Extract text from a specified page of a PDF file and process it with a custom prompt using RolmOCR and chat completion.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract and process (1-based indexing). Defaults to 1.
+        prompt (str): The custom prompt to process the extracted text (e.g., "Summarize in 2 sentences" or "List key points").
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page.
+            - response: The output generated by the custom prompt.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, the prompt is empty, or processing fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "Text from page 1",
+            "response": "The text summarizes... [2-sentence summary]",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Validate prompt
+        if not prompt.strip():
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_text)
+        extracted_text = extracted_json["page_content"]
+
+        # Process text with custom prompt using OpenAI chat completion
+        custom_response = openai_client.chat.completions.create(
+            model=rolm_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"{prompt}\n\n{extracted_text}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+        response = custom_response.choices[0].message.content
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "response": response,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or generating response: {str(e)}")
+
+@app.post(
+    "/summarize-pdf-kannada/",
+    response_model=dict,
+    summary="Extract, summarize, and translate summary to Kannada from a single PDF page",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR, generates a 3-5 sentence summary "
+        "in English using chat completion, and translates the summary to Kannada using an external translation API."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text, the English summary, the Kannada summary, and the processed page number."
+    )
+)
+async def summarize_pdf_kannada(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=SummarizePDFKannadaRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    """
+    Extract text from a specified page of a PDF file, summarize it, and translate the summary to Kannada.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract, summarize, and translate (1-based indexing). Defaults to 1.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page.
+            - english_summary: A 3-5 sentence summary in English.
+            - kannada_summary: The English summary translated to Kannada.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, translation fails, or processing fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "Text from page 1",
+            "english_summary": "The document discusses... [3-5 sentence summary]",
+            "kannada_summary": "ದಾಖಲೆಯು ಚರ್ಚಿಸುತ್ತದೆ... [translated summary]",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Extract text and generate English summary using existing endpoint logic
+        summary_response = await summarize_pdf(file, page_number)
+        summary_content = summary_response.body.decode("utf-8")
+        summary_json = json.loads(summary_content)
+        extracted_text = summary_json["original_text"]
+        english_summary = summary_json["summary"]
+
+        # Translate English summary to Kannada using external API
+        translation_url = "http://0.0.0.0:7861/translate?src_lang=eng_Latn&tgt_lang=kan_Knda"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "sentences": [english_summary],
+            "src_lang": "eng_Latn",
+            "tgt_lang": "kan_Knda"
+        }
+        try:
+            response = requests.post(translation_url, headers=headers, json=payload)
+            response.raise_for_status()  # Raise exception for bad status codes
+            translation_data = response.json()
+            kannada_summary = translation_data["translations"][0]
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Translation API request failed: {str(e)}")
+        except (KeyError, IndexError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid translation API response: {str(e)}")
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "english_summary": english_summary,
+            "kannada_summary": kannada_summary,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF, generating summary, or translating: {str(e)}")
+
+@app.post(
+    "/translate-pdf-kannada-to-english/",
+    response_model=dict,
+    summary="Extract and translate text from Kannada to English from a single PDF page",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR and translates it from Kannada to English "
+        "using an external translation API."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text (in Kannada), the translated text (in English), and the processed page number."
+    )
+)
+async def translate_pdf_kannada_to_english(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=TranslatePDFKannadaToEnglishRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    """
+    Extract text from a specified page of a PDF file and translate it from Kannada to English.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract and translate (1-based indexing). Defaults to 1.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page (in Kannada).
+            - english_text: The extracted text translated to English.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, translation fails, or processing fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "ದಾಖಲೆಯು ಚರ್ಚಿಸುತ್ತದೆ... [Kannada text]",
+            "english_text": "The document discusses... [translated text]",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_text)
+        extracted_text = extracted_json["page_content"]
+
+        # Translate extracted text from Kannada to English using external API
+        translation_url = "http://0.0.0.0:7861/translate?src_lang=kan_Knda&tgt_lang=eng_Latn"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "sentences": [extracted_text],
+            "src_lang": "kan_Knda",
+            "tgt_lang": "eng_Latn"
+        }
+        try:
+            response = requests.post(translation_url, headers=headers, json=payload)
+            response.raise_for_status()  # Raise exception for bad status codes
+            translation_data = response.json()
+            english_text = translation_data["translations"][0]
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Translation API request failed: {str(e)}")
+        except (KeyError, IndexError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid translation API response: {str(e)}")
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "english_text": english_text,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or translating: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
