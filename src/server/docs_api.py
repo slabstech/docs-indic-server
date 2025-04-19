@@ -341,7 +341,7 @@ async def custom_prompt_pdf(
         ...,
         embed=True,
         description=CustomPromptPDFRequest.model_fields["prompt"].description,
-        example=CustomPromptPDFRequest.model_fields["prompt"].example
+        examples=CustomPromptPDFRequest.model_fields["prompt"].examples
     )
 ):
     """
