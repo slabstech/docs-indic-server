@@ -30,7 +30,9 @@ app = FastAPI(
 # Initialize OpenAI client for RolmOCR
 openai_client = OpenAI(api_key="123", base_url="http://localhost:8000/v1")
 
-rolm_model = "google/gemma-3-12b-it"
+#rolm_model = "google/gemma-3-12b-it"   - for H100 only
+rolm_model = "google/gemma-3-4b-it"   # for A100 only
+
 
 # Pydantic models for request parameters
 class ExtractTextRequest(BaseModel):

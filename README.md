@@ -46,7 +46,7 @@ Document parser for Indian languages
 
 - Backend Server  - Select based on GPU VRAM
   - ```bash
-    vllm serve google/gemma-3-4b-it
+    vllm serve google/gemma-3-4b-it   
     ```
   - ```bash
     vllm serve reducto/RolmOCR
@@ -54,6 +54,12 @@ Document parser for Indian languages
   - ```bash
     vllm serve google/gemma-3-12b-it
     ```
+
+- for H100 only
+  - google/gemma-3-12b-it
+
+- for A100 only
+  - google/gemma-3-12b-it
 
 
 ### Running with FastAPI Server
