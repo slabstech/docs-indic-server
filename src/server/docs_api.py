@@ -7,7 +7,7 @@ from io import BytesIO
 from PIL import Image
 import tempfile
 import os
-import requests  # Added for external API call
+import requests
 from typing import List, Union
 from pypdf import PdfReader
 from pydantic import BaseModel, Field
@@ -32,7 +32,6 @@ openai_client = OpenAI(api_key="123", base_url="http://localhost:8000/v1")
 
 #rolm_model = "google/gemma-3-12b-it"   - for H100 only
 rolm_model = "google/gemma-3-4b-it"   # for A100 only
-
 
 # Pydantic models for request parameters
 class ExtractTextRequest(BaseModel):
@@ -476,8 +475,10 @@ async def summarize_pdf_kannada(
 
         # Extract text and generate English summary using existing endpoint logic
         summary_response = await summarize_pdf(file, page_number)
-        extracted_text = summary_response["original_text"]
-        english_summary = summary_response["summary"]
+        summary_content = summary_response.body.decode("utf-8")
+        summary_json = json.loads(summary_content)
+        extracted_text = summary_json["original_text"]
+        english_summary = summary_json["summary"]
 
         # Translate English summary to Kannada using external API
         translation_url = "http://0.0.0.0:7861/translate?src_lang=eng_Latn&tgt_lang=kan_Knda"
