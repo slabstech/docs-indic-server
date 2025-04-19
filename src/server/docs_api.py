@@ -19,8 +19,8 @@ app = FastAPI(
     title="Combined OCR API",
     description=(
         "API for extracting text from PDF pages and PNG images using RolmOCR, with additional functionality "
-        "to summarize PDF content. Supports text extraction from single or multiple PDF pages, OCR for PNG images, "
-        "and summarization of extracted text."
+        "to summarize PDF content. Supports text extraction from a single PDF page, OCR for PNG images, "
+        "and summarization of a single PDF page."
     ),
     version="1.0.0"
 )
@@ -40,16 +40,11 @@ class ExtractTextRequest(BaseModel):
     )
 
 class SummarizePDFRequest(BaseModel):
-    page_numbers: Union[str, List[int], None] = Field(
-        default=None,
-        description=(
-            "Specify the page(s) to process from the PDF. Options:\n"
-            "- 'all': Process all pages in the PDF.\n"
-            "- List of integers (e.g., [1, 3, 5]): Process specific pages (1-based indexing).\n"
-            "- Single page number as a string (e.g., '1'): Process a single page.\n"
-            "- None (default): Process all pages."
-        ),
-        examples=["all", [1, 3, 5], "1", None]
+    page_number: int = Field(
+        default=1,
+        description="The page number to extract and summarize (1-based indexing). Must be a positive integer.",
+        ge=1,
+        example=1
     )
 
 def encode_image(image: BytesIO) -> str:
@@ -231,50 +226,47 @@ async def ocr_image(file: UploadFile = File(..., description="The PNG image to p
 @app.post(
     "/summarize-pdf/",
     response_model=dict,
-    summary="Extract and summarize text from PDF page(s)",
+    summary="Extract and summarize text from a single PDF page",
     description=(
-        "Extracts text from specified page(s) of a PDF file using RolmOCR and generates a 3-5 sentence summary "
-        "using chat completion. Supports processing all pages, a single page, or multiple specific pages."
+        "Extracts text from a specified page of a PDF file using RolmOCR and generates a 3-5 sentence summary "
+        "using chat completion."
     ),
     response_description=(
-        "A JSON object containing the combined extracted text, a summary, and the list of processed pages."
+        "A JSON object containing the extracted text, a summary, and the processed page number."
     )
 )
 async def summarize_pdf(
     file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
-    page_numbers: Union[str, List[int], None] = Body(
-        default=None,
+    page_number: int = Body(
+        default=1,
         embed=True,
-        description=SummarizePDFRequest.model_fields["page_numbers"].description,
-        examples=SummarizePDFRequest.model_fields["page_numbers"].examples
+        description=SummarizePDFRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
     )
 ):
     """
-    Extract text from specified page(s) of a PDF file and generate a summary using RolmOCR and chat completion.
+    Extract text from a specified page of a PDF file and generate a summary using RolmOCR and chat completion.
 
     Args:
         file (UploadFile): The PDF file to process.
-        page_numbers: Specify pages to process. Can be:
-            - A list of page numbers (1-based indexing, e.g., [1, 3, 5]),
-            - A single page number as a string (e.g., "1"),
-            - "all" to process all pages,
-            - None (default) to process all pages.
+        page_number (int): The page number to extract and summarize (1-based indexing). Defaults to 1.
 
     Returns:
         JSONResponse: A dictionary containing:
-            - original_text: Combined text extracted from the specified pages.
+            - original_text: Text extracted from the specified page.
             - summary: A 3-5 sentence summary of the extracted text.
-            - processed_pages: List of page numbers processed.
+            - processed_page: The page number processed.
 
     Raises:
-        HTTPException: If the file is not a PDF, page numbers are invalid, or processing fails.
+        HTTPException: If the file is not a PDF, the page number is invalid, or processing fails.
 
     Example:
         ```json
         {
-            "original_text": "Text from page 1\\n\\nText from page 2",
+            "original_text": "Text from page 1",
             "summary": "The document discusses... [3-5 sentence summary]",
-            "processed_pages": [1, 2]
+            "processed_page": 1
         }
         ```
     """
@@ -283,40 +275,11 @@ async def summarize_pdf(
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-        # Save the uploaded PDF to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            temp_file.write(await file.read())
-            temp_file_path = temp_file.name
-
-        # Get total number of pages in the PDF
-        pdf_reader = PdfReader(temp_file_path)
-        total_pages = len(pdf_reader.pages)
-
-        # Determine which pages to process
-        if isinstance(page_numbers, str) and page_numbers.lower() == "all":
-            pages_to_process = list(range(1, total_pages + 1))
-        elif isinstance(page_numbers, list):
-            pages_to_process = page_numbers
-        elif isinstance(page_numbers, str) and page_numbers.isdigit():
-            pages_to_process = [int(page_numbers)]
-        else:
-            pages_to_process = list(range(1, total_pages + 1))  # Default to all pages
-
-        # Validate page numbers
-        for page in pages_to_process:
-            if not isinstance(page, int) or page < 1 or page > total_pages:
-                raise HTTPException(status_code=400, detail=f"Invalid page number: {page}. Must be between 1 and {total_pages}.")
-
-        # Extract text from specified pages
-        extracted_texts = []
-        for page_number in pages_to_process:
-            text_response = await extract_text_from_pdf(file=UploadFile(filename=file.filename, file=BytesIO(await file.read())), page_number=page_number)
-            extracted_text = text_response.body.decode("utf-8")
-            extracted_json = json.loads(extracted_text)
-            extracted_texts.append(extracted_json["page_content"])
-
-        # Combine extracted texts
-        combined_text = "\n\n".join(extracted_texts)
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_text)
+        extracted_text = extracted_json["page_content"]
 
         # Generate summary using OpenAI chat completion
         summary_response = openai_client.chat.completions.create(
@@ -324,7 +287,7 @@ async def summarize_pdf(
             messages=[
                 {
                     "role": "user",
-                    "content": f"Summarize the following text in 3-5 sentences:\n\n{combined_text}"
+                    "content": f"Summarize the following text in 3-5 sentences:\n\n{extracted_text}"
                 }
             ],
             temperature=0.3,
@@ -332,22 +295,13 @@ async def summarize_pdf(
         )
         summary = summary_response.choices[0].message.content
 
-        # Clean up temporary file
-        os.remove(temp_file_path)
-
         return JSONResponse(content={
-            "original_text": combined_text,
+            "original_text": extracted_text,
             "summary": summary,
-            "processed_pages": pages_to_process
+            "processed_page": page_number
         })
 
     except Exception as e:
-        # Clean up in case of error
-        if 'temp_file_path' in locals():
-            try:
-                os.remove(temp_file_path)
-            except:
-                pass
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
 
 if __name__ == "__main__":
