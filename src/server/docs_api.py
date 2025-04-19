@@ -135,6 +135,46 @@ async def ocr_image(file: UploadFile = File(...)):
         return {"extracted_text": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+    
+
+@app.post("/summarize-pdf/", response_model=dict)
+async def summarize_pdf(file: UploadFile = File(...), page_number: int = 1):
+    """
+    Extract text from a specific page of a PDF file and generate a summary using RolmOCR and chat completion.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract text from (1-based indexing).
+
+    Returns:
+        JSONResponse: The summarized content or error details.
+    """
+    try:
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response["page_content"]
+
+        # Generate summary using OpenAI chat completion
+        summary_response = openai_client.chat.completions.create(
+            model=rolm_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Summarize the following text in 3-5 sentences:\n\n{extracted_text}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+        summary = summary_response.choices[0].message.content
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "summary": summary
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
 
 @app.get("/")
 async def root():

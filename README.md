@@ -74,6 +74,7 @@ Document parser for Indian languages
     ```
   - Terminal 2
     ```bash
+    cd docs-indic-server
     source venv/bin/activate
     export HF_TOKEN='YOUR-HF-TOKEN'
     python src/server/docs_api.py --port 7860 --host 0.0.0.0
