@@ -38,6 +38,28 @@ Document parser for Indian languages
       pip install -r cpu-requirements.txt
       ```
 
+
+- Backend Server 
+  - vllm serve google/gemma-3-4b-it
+  - vllm serve reducto/RolmOCR
+  - vllm serve google/gemma-3-12b-it
+
+
+## Download Qwen VL
+
+```bash download_model.sh
+huggingface_cli download google/gemma-3-4b-it
+```
+
+
+## Download Gemma
+
+```bash download_model.sh
+huggingface_cli download google/gemma-3-4b-it
+```
+
+
+
 ## Download Pixtral 
 
 ```bash download_model.sh

@@ -20,7 +20,10 @@ app = FastAPI(
 
 # Initialize OpenAI client for RolmOCR
 openai_client = OpenAI(api_key="123", base_url="http://localhost:8000/v1")
-rolm_model = "reducto/RolmOCR"
+
+#rolm_model = "reducto/RolmOCR"
+rolm_model = "google/gemma-3-12b-it"
+
 
 def encode_image(image: BytesIO) -> str:
     """Encode image bytes to base64 string."""
