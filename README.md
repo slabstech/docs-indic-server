@@ -79,6 +79,23 @@ Document parser for Indian languages
     export HF_TOKEN='YOUR-HF-TOKEN'
     python src/server/docs_api.py --port 7860 --host 0.0.0.0
     ```
+  - Terminal 3
+    ```bash
+    git clone https://github.com/slabstech/indic-translate-server
+    cd indic-translate-server
+    python3.10 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    huggingface-cli download ai4bharat/indictrans2-indic-en-dist-200M
+    huggingface-cli download ai4bharat/indictrans2-en-indic-dist-200M
+    python src/server/translate_api.py --port 7861 --host 0.0.0.0 --device cuda --use_distilled
+    ```
+
+
+-- 
+
+For Translation 
+
 
 
 ## Contributing
