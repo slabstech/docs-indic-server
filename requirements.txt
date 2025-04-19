@@ -1,0 +1,13 @@
+torch
+pyyaml
+fastapi
+transformers
+pydantic_settings
+uvicorn
+pillow
+python-multipart
+pyvips
+einops
+olmocr @ git+https://github.com/allenai/olmocr.git
+cython
+setuptools

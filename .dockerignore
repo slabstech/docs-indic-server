@@ -70,6 +70,5 @@ __pypackages__
 
 
 !requirements.txt
-
-#!model_requirements.txt
-#!server_requirements.txt
+!mooondream_requirements.txt
+!pixtral_requirements.txt

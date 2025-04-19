@@ -47,12 +47,17 @@ model = None
 async def lifespan(app: FastAPI):
     global model
     # Load the model
+
+    model = AutoModelForCausalLM.from_pretrained("vikhyatk/moondream2",revision="2025-01-09", trust_remote_code=True).to(device, dtype=torch_dtype)
+
+    '''
     model = AutoModelForCausalLM.from_pretrained(
         "vikhyatk/moondream2",
         revision="2025-01-09",
         trust_remote_code=True,
         device_map={"": device}
     )
+    '''
     yield
     # Clean up the model, if needed
     model = None
