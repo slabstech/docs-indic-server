@@ -118,7 +118,7 @@ async def extract_text_from_pdf(
     page_number: int = Body(
         default=1,
         embed=True,
-        description=ExtractTextRequest.__fields__["page_number"].field_info.description,
+        description=ExtractTextRequest.model_fields["page_number"].description,
         ge=1,
         example=1
     )
@@ -245,8 +245,8 @@ async def summarize_pdf(
     page_numbers: Union[str, List[int], None] = Body(
         default=None,
         embed=True,
-        description=SummarizePDFRequest.__fields__["page_numbers"].field_info.description,
-        examples=SummarizePDFRequest.__fields__["page_numbers"].field_info.examples
+        description=SummarizePDFRequest.model_fields["page_numbers"].description,
+        examples=SummarizePDFRequest.model_fields["page_numbers"].examples
     )
 ):
     """
