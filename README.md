@@ -69,12 +69,20 @@ Document parser for Indian languages
   ```
 
 
+
+
+wget https://github.com/slabstech/docs-indic-server/blob/01e811210d56e655091313c1df8481d11e7640a6/install-script.sh
+chmod +x install-script.sh
+bash install-script.sh
+
+
 ### GPU server setup
   - Terminal 1 
     ```bash
     git clone https://github.com/slabstech/docs-indic-server.git
     cd docs-indic-server
     chmod +x install-script.sh
+    bash install-script.sh
     export HF_TOKEN='YOUR-HF-TOKEN'
     vllm serve google/gemma-3-4b-it
     ```

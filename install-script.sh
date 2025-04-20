@@ -1,3 +1,7 @@
+git clone https://github.com/slabstech/docs-indic-server.git
+
+cd docs-indic-server
+
 sudo apt-get update
 
 sudo apt-get install -y poppler-utils ttf-mscorefonts-installer msttcorefonts fonts-crosextra-caladea fonts-crosextra-carlito gsfonts lcdf-typetools
