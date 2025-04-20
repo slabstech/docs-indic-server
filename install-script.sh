@@ -12,4 +12,5 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 
+export HF_HOME=/home/ubuntu/data-dhwani-models
 export VLLM_USE_V1=1

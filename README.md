@@ -84,6 +84,7 @@ bash install-script.sh
     chmod +x install-script.sh
     bash install-script.sh
     export HF_TOKEN='YOUR-HF-TOKEN'
+    export HF_HOME=/home/ubuntu/data-dhwani-models
     vllm serve google/gemma-3-4b-it
     ```
   - Terminal 2
@@ -91,6 +92,7 @@ bash install-script.sh
     cd docs-indic-server
     source venv/bin/activate
     export HF_TOKEN='YOUR-HF-TOKEN'
+    export HF_HOME=/home/ubuntu/data-dhwani-models
     python src/server/docs_api.py --port 7860 --host 0.0.0.0
     ```
   - Terminal 3
@@ -101,6 +103,7 @@ bash install-script.sh
     source venv/bin/activate
     pip install -r server-requirements.txt
     export HF_TOKEN='YOUR-HF-TOKEN'
+    export HF_HOME=/home/ubuntu/data-dhwani-models
     huggingface-cli download ai4bharat/indictrans2-indic-en-dist-200M
     huggingface-cli download ai4bharat/indictrans2-en-indic-dist-200M
     python src/server/translate_api.py --port 7861 --host 0.0.0.0 --device cuda --use_distilled
