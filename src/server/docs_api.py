@@ -606,7 +606,179 @@ async def translate_pdf_kannada_to_english(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF or translating: {str(e)}")
+    
+
+@app.post(
+    "/visual-query/",
+    response_model=dict,
+    summary="Extract text from a PNG image using visual query",
+    description=(
+        "Processes a PNG image using an external visual query API to extract a description of the image content. "
+        "The query 'describe the image' is used to process the image."
+    ),
+    response_description="A JSON object containing the extracted text from the visual query API."
+)
+async def visual_query(file: UploadFile = File(..., description="The PNG image to process. Must be a valid PNG.")):
+    """
+    Extract text from a PNG image using an external visual query API.
+
+    Args:
+        file (UploadFile): The PNG image to process.
+
+    Returns:
+        dict: A dictionary containing:
+            - extracted_text: The text extracted from the image via the visual query API.
+
+    Raises:
+        HTTPException: If the file is not a PNG or the external API request fails.
+
+    Example:
+        ```json
+        {
+            "extracted_text": "Here’s a summary of the image in one sentence:\\n\\nThe image displays an AWS cost and usage report..."
+        }
+        ```
+    """
+    # Validate file type
+    if not file.content_type.startswith("image/png"):
+        raise HTTPException(status_code=400, detail="Only PNG images are supported")
+
+    try:
+        # Read image file
+        image_bytes = await file.read()
+
+        # Prepare multipart/form-data for the external API
+        files = {
+            "file": (file.filename, image_bytes, "image/png")
+        }
+        data = {
+            "query": "describe the image",
+            "src_lang": "eng_Latn",
+            "tgt_lang": "eng_Latn"
+        }
+
+        # Make POST request to the external visual query API
+        visual_query_url = "http://155.248.245.86:7860/v1/visual_query/"
+        headers = {
+            "accept": "application/json"
+        }
+        try:
+            response = requests.post(visual_query_url, headers=headers, files=files, data=data)
+            response.raise_for_status()  # Raise exception for bad status codes
+            response_data = response.json()
+            extracted_text = response_data.get("answer", "")
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Visual query API request failed: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid visual query API response: {str(e)}")
+
+        return {"extracted_text": extracted_text}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+@app.post(
+    "/extract-text-visual-query/",
+    response_model=dict,
+    summary="Extract text from a PDF page using visual query",
+    description=(
+        "Extracts text from a specific page of a PDF file by rendering it as an image and processing it with an external visual query API. "
+        "The query 'describe the image' is used to generate a description of the page content."
+    ),
+    response_description="A JSON object containing the extracted text from the specified page."
+)
+async def extract_text_visual_query(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=ExtractTextRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    """
+    Extract text from a specific page of a PDF file using an external visual query API.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract text from (1-based indexing). Defaults to 1.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - page_content: The extracted text from the specified page via the visual query API.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, or processing fails.
+
+    Example:
+        ```json
+        {"page_content": "Here’s a summary of the page in one sentence:\\n\\nThe page displays..."}
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Render the specified page to an image
+        try:
+            image_base64 = render_pdf_to_base64png(
+                temp_file_path, page_number, target_longest_image_dim=1024
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
+
+        # Decode base64 image to bytes for visual query API
+        try:
+            image_bytes = base64.b64decode(image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to decode image: {str(e)}")
+
+        # Prepare multipart/form-data for the external visual query API
+        files = {
+            "file": ("page.png", image_bytes, "image/png")
+        }
+        data = {
+            "query": "describe the image",
+            "src_lang": "eng_Latn",
+            "tgt_lang": "eng_Latn"
+        }
+
+        # Make POST request to the external visual query API
+        visual_query_url = "http://155.248.245.86:7860/v1/visual_query/"
+        headers = {
+            "accept": "application/json"
+        }
+        try:
+            response = requests.post(visual_query_url, headers=headers, files=files, data=data)
+            response.raise_for_status()  # Raise exception for bad status codes
+            response_data = response.json()
+            page_content = response_data.get("answer", "")
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Visual query API request failed: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid visual query API response: {str(e)}")
+
+        # Clean up temporary Old temporary file
+        os.remove(temp_file_path)
+
+        return JSONResponse(content={"page_content": page_content})
+
+    except Exception as e:
+        # Clean up in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    uvicorn.run(app, host="0.0.0.0", port=7861)

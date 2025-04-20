@@ -69,13 +69,22 @@ Document parser for Indian languages
   ```
 
 
+
+
+wget https://github.com/slabstech/docs-indic-server/blob/01e811210d56e655091313c1df8481d11e7640a6/install-script.sh
+chmod +x install-script.sh
+bash install-script.sh
+
+
 ### GPU server setup
   - Terminal 1 
     ```bash
     git clone https://github.com/slabstech/docs-indic-server.git
     cd docs-indic-server
     chmod +x install-script.sh
+    bash install-script.sh
     export HF_TOKEN='YOUR-HF-TOKEN'
+    export HF_HOME=/home/ubuntu/data-dhwani-models
     vllm serve google/gemma-3-4b-it
     ```
   - Terminal 2
@@ -83,6 +92,7 @@ Document parser for Indian languages
     cd docs-indic-server
     source venv/bin/activate
     export HF_TOKEN='YOUR-HF-TOKEN'
+    export HF_HOME=/home/ubuntu/data-dhwani-models
     python src/server/docs_api.py --port 7860 --host 0.0.0.0
     ```
   - Terminal 3
@@ -93,6 +103,7 @@ Document parser for Indian languages
     source venv/bin/activate
     pip install -r server-requirements.txt
     export HF_TOKEN='YOUR-HF-TOKEN'
+    export HF_HOME=/home/ubuntu/data-dhwani-models
     huggingface-cli download ai4bharat/indictrans2-indic-en-dist-200M
     huggingface-cli download ai4bharat/indictrans2-en-indic-dist-200M
     python src/server/translate_api.py --port 7861 --host 0.0.0.0 --device cuda --use_distilled
