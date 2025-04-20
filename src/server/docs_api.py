@@ -606,6 +606,76 @@ async def translate_pdf_kannada_to_english(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF or translating: {str(e)}")
+    
+
+@app.post(
+    "/visual-query/",
+    response_model=dict,
+    summary="Extract text from a PNG image using visual query",
+    description=(
+        "Processes a PNG image using an external visual query API to extract a description of the image content. "
+        "The query 'describe the image' is used to process the image."
+    ),
+    response_description="A JSON object containing the extracted text from the visual query API."
+)
+async def visual_query(file: UploadFile = File(..., description="The PNG image to process. Must be a valid PNG.")):
+    """
+    Extract text from a PNG image using an external visual query API.
+
+    Args:
+        file (UploadFile): The PNG image to process.
+
+    Returns:
+        dict: A dictionary containing:
+            - extracted_text: The text extracted from the image via the visual query API.
+
+    Raises:
+        HTTPException: If the file is not a PNG or the external API request fails.
+
+    Example:
+        ```json
+        {
+            "extracted_text": "Here’s a summary of the image in one sentence:\\n\\nThe image displays an AWS cost and usage report..."
+        }
+        ```
+    """
+    # Validate file type
+    if not file.content_type.startswith("image/png"):
+        raise HTTPException(status_code=400, detail="Only PNG images are supported")
+
+    try:
+        # Read image file
+        image_bytes = await file.read()
+
+        # Prepare multipart/form-data for the external API
+        files = {
+            "file": (file.filename, image_bytes, "image/png")
+        }
+        data = {
+            "query": "describe the image",
+            "src_lang": "eng_Latn",
+            "tgt_lang": "eng_Latn"
+        }
+
+        # Make POST request to the external visual query API
+        visual_query_url = "http://155.248.245.86:7860/v1/visual_query/"
+        headers = {
+            "accept": "application/json"
+        }
+        try:
+            response = requests.post(visual_query_url, headers=headers, files=files, data=data)
+            response.raise_for_status()  # Raise exception for bad status codes
+            response_data = response.json()
+            extracted_text = response_data.get("answer", "")
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Visual query API request failed: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid visual query API response: {str(e)}")
+
+        return {"extracted_text": extracted_text}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
