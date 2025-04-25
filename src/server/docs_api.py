@@ -658,7 +658,7 @@ async def visual_query(file: UploadFile = File(..., description="The PNG image t
         }
 
         # Make POST request to the external visual query API
-        visual_query_url = "http://155.248.245.86:7860/v1/visual_query/"
+        visual_query_url = "http://0.0.0.0:7862/v1/visual_query/"
         headers = {
             "accept": "application/json"
         }
@@ -751,7 +751,7 @@ async def extract_text_visual_query(
         }
 
         # Make POST request to the external visual query API
-        visual_query_url = "http://155.248.245.86:7860/v1/visual_query/"
+        visual_query_url = "http://0.0.0.0:7862/v1/visual_query/"
         headers = {
             "accept": "application/json"
         }
