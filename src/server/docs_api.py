@@ -130,7 +130,7 @@ async def root():
     return {"message": "Combined OCR API is running"}
 
 @app.post(
-    "/extract-text/",
+    "/extract-text-old/",
     response_model=dict,
     summary="Extract text from a PDF page",
     description=(
@@ -207,7 +207,7 @@ async def extract_text_from_pdf(
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post(
-    "/ocr",
+    "/ocr-old",
     response_model=dict,
     summary="Extract text from a PNG image",
     description=(
@@ -255,7 +255,7 @@ async def ocr_image(file: UploadFile = File(..., description="The PNG image to p
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 @app.post(
-    "/summarize-pdf/",
+    "/summarize-pdf-old/",
     response_model=dict,
     summary="Extract and summarize text from a single PDF page",
     description=(
@@ -336,7 +336,7 @@ async def summarize_pdf(
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
 
 @app.post(
-    "/custom-prompt-pdf/",
+    "/custom-prompt-pdf-old/",
     response_model=dict,
     summary="Extract and process text from a single PDF page with a custom prompt",
     description=(
@@ -678,7 +678,7 @@ async def visual_query(file: UploadFile = File(..., description="The PNG image t
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 @app.post(
-    "/extract-text-visual-query/",
+    "/extract-text/",
     response_model=dict,
     summary="Extract text from a PDF page using visual query",
     description=(
