@@ -412,7 +412,6 @@ async def extract_text_visual_query(
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
 from fastapi import FastAPI, File, UploadFile, Body, HTTPException
 from fastapi.responses import JSONResponse
 import tempfile
@@ -426,7 +425,7 @@ import requests
     summary="Extract text from a PDF page using visual query",
     description=(
         "Extracts text from a specific page of a PDF file by rendering it as an image and processing it with an external visual query API. "
-        "The query 'describe the image' is used to generate a description of the page content. "
+        "The user-provided prompt is used to generate a description of the page content. "
         "Source and target languages are provided as input."
     ),
     response_description="A JSON object containing the extracted text from the specified page."
@@ -451,6 +450,12 @@ async def extract_text_visual_query_eng(
         embed=True,
         description="Target language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
         example="kan_Knda"
+    ),
+    prompt: str = Body(
+        default="describe the image",
+        embed=True,
+        description="The prompt to send to the visual query API (e.g., 'describe the image', 'extract text from the image').",
+        example="describe the image"
     )
 ):
     try:
@@ -482,7 +487,7 @@ async def extract_text_visual_query_eng(
             "file": ("page.png", image_bytes, "image/png")
         }
         data = {
-            "query": "describe the image"
+            "query": prompt
         }
 
         # Make POST request to the external visual query API
@@ -518,8 +523,7 @@ async def extract_text_visual_query_eng(
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7861)
