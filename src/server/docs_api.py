@@ -489,7 +489,7 @@ async def summarize_pdf_kannada(
         english_summary = summary_json["summary"]
 
         # Translate English summary to Kannada using external API
-        translation_url = "http://0.0.0.0:7861/translate?src_lang=eng_Latn&tgt_lang=kan_Knda"
+        translation_url = "http://0.0.0.0:7862/translate?src_lang=eng_Latn&tgt_lang=kan_Knda"
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json"
@@ -578,7 +578,7 @@ async def translate_pdf_kannada_to_english(
         extracted_text = extracted_json["page_content"]
 
         # Translate extracted text from Kannada to English using external API
-        translation_url = "http://0.0.0.0:7861/translate?src_lang=kan_Knda&tgt_lang=eng_Latn"
+        translation_url = "http://0.0.0.0:7862/translate?src_lang=kan_Knda&tgt_lang=eng_Latn"
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json"
