@@ -779,6 +779,91 @@ async def extract_text_visual_query(
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
+
+@app.post(
+    "/extract-text-eng/",
+    response_model=dict,
+    summary="Extract text from a PDF page using visual query",
+    description=(
+        "Extracts text from a specific page of a PDF file by rendering it as an image and processing it with an external visual query API. "
+        "The query 'describe the image' is used to generate a description of the page content."
+    ),
+    response_description="A JSON object containing the extracted text from the specified page."
+)
+async def extract_text_visual_query_eng(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description=ExtractTextRequest.model_fields["page_number"].description,
+        ge=1,
+        example=1
+    )
+):
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Render the specified page to an image
+        try:
+            image_base64 = render_pdf_to_base64png(
+                temp_file_path, page_number, target_longest_image_dim=1024
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
+
+        # Decode base64 image to bytes for visual query API
+        try:
+            image_bytes = base64.b64decode(image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to decode image: {str(e)}")
+
+        # Prepare multipart/form-data for the external visual query API
+        files = {
+            "file": ("page.png", image_bytes, "image/png")
+        }
+        data = {
+            "query": "describe the image",
+            "src_lang": "eng_Latn",
+            "tgt_lang": "eng_Latn"
+        }
+
+        # Make POST request to the external visual query API
+        visual_query_url = "https://slabstech-dhwani-server-workshop.hf.space/v1/visual_query"
+        headers = {
+            "accept": "application/json"
+        }
+        try:
+            response = requests.post(visual_query_url, headers=headers, files=files, data=data)
+            response.raise_for_status()  # Raise exception for bad status codes
+            response_data = response.json()
+            page_content = response_data.get("answer", "")
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Visual query API request failed: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid visual query API response: {str(e)}")
+
+        # Clean up temporary file
+        os.remove(temp_file_path)
+
+        return JSONResponse(content={"page_content": page_content})
+
+    except Exception as e:
+        # Clean up in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    
+    
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from pydantic import BaseModel
 import torch
