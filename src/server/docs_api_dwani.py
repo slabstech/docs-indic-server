@@ -413,7 +413,6 @@ async def extract_text_visual_query(
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-import logging
 from fastapi import FastAPI, File, UploadFile, Body, HTTPException
 from fastapi.responses import JSONResponse
 import tempfile
@@ -421,17 +420,14 @@ import base64
 import os
 import requests
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 @app.post(
     "/extract-text-eng/",
     response_model=dict,
     summary="Extract text from a PDF page using visual query",
     description=(
         "Extracts text from a specific page of a PDF file by rendering it as an image and processing it with an external visual query API. "
-        "The query 'describe the image' is used to generate a description of the page content."
+        "The query 'describe the image' is used to generate a description of the page content. "
+        "Source and target languages are provided as input."
     ),
     response_description="A JSON object containing the extracted text from the specified page."
 )
@@ -440,9 +436,21 @@ async def extract_text_visual_query_eng(
     page_number: int = Body(
         default=1,
         embed=True,
-        description=ExtractTextRequest.model_fields["page_number"].description,
+        description="The page number to extract text from (1-based indexing).",
         ge=1,
         example=1
+    ),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    ),
+    tgt_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Target language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="kan_Knda"
     )
 ):
     try:
@@ -466,7 +474,6 @@ async def extract_text_visual_query_eng(
         # Decode base64 image to bytes for visual query API
         try:
             image_bytes = base64.b64decode(image_base64)
-            logger.info(f"Image decoded successfully, size: {len(image_bytes)} bytes")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to decode image: {str(e)}")
 
@@ -475,12 +482,11 @@ async def extract_text_visual_query_eng(
             "file": ("page.png", image_bytes, "image/png")
         }
         data = {
-            "query": "describe the image"  # Corrected typo from "descirbe"
+            "query": "describe the image"
         }
-        logger.info(f"Request data: {data}")
 
         # Make POST request to the external visual query API
-        visual_query_url = "https://slabstech-dhwani-server-workshop.hf.space/v1/visual_query?src_lang=kan_Knda&tgt_lang=kan_Knda"
+        visual_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/visual_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
         headers = {
             "accept": "application/json"
         }
@@ -488,19 +494,15 @@ async def extract_text_visual_query_eng(
             response = requests.post(visual_query_url, headers=headers, files=files, data=data, timeout=30)
             response.raise_for_status()  # Raise exception for bad status codes
             response_data = response.json()
-            logger.info(f"API response: {response_data}")
             page_content = response_data.get("answer", "")
         except requests.HTTPError as e:
-            logger.error(f"API request failed with status {response.status_code}: {response.text}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Visual query API request failed: {response.status_code} {response.reason}: {response.text}"
             )
         except requests.RequestException as e:
-            logger.error(f"API request error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Visual query API request failed: {str(e)}")
         except (KeyError, ValueError) as e:
-            logger.error(f"Invalid API response: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Invalid visual query API response: {str(e)}")
 
         # Clean up temporary file
@@ -515,10 +517,9 @@ async def extract_text_visual_query_eng(
                 os.remove(temp_file_path)
             except:
                 pass
-        logger.error(f"General error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-
+    
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7861)
