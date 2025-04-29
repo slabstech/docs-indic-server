@@ -379,7 +379,7 @@ async def extract_text_visual_query(
             "file": ("page.png", image_bytes, "image/png")
         }
         data = {
-            "query": "describe the image",
+            "query": "Return the plain text representation of this document as if you were reading it naturally",
             "src_lang": "eng_Latn",
             "tgt_lang": "eng_Latn"
         }
@@ -452,7 +452,7 @@ async def extract_text_visual_query_eng(
         example="kan_Knda"
     ),
     prompt: str = Body(
-        default="describe the image",
+        default="Return the plain text representation of this document as if you were reading it naturally",
         embed=True,
         description="The prompt to send to the visual query API (e.g., 'describe the image', 'extract text from the image').",
         example="describe the image"
@@ -558,7 +558,7 @@ async def extract_text_all_pages(
         example="kan_Knda"
     ),
     prompt: str = Body(
-        default="describe the image",
+        default="Return the plain text representation of this document as if you were reading it naturally",
         embed=True,
         description="The prompt to send to the visual query API (e.g., 'describe the image', 'extract text from the image').",
         example="extract text from the image"
