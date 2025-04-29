@@ -490,8 +490,22 @@ async def extract_text_visual_query_eng(
             "query": prompt
         }
 
+        import os
+
+        # Get the base URL (IP or domain) from environment variable
+        base_url = os.getenv("DWANI_AI_API_BASE_URL")
+
+        if not base_url:
+            raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
+
+        # Define the endpoint path
+        endpoint = f"/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+
+            # Construct the full API URL
+        document_query_url = f"{base_url.rstrip('/')}{endpoint}"
+
         # Make POST request to the external visual query API
-        document_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+        
         headers = {
             "accept": "application/json"
         }
@@ -636,8 +650,22 @@ async def extract_text_all_pages(
                 "query": prompt
             }
 
+            import os
+
+            # Get the base URL (IP or domain) from environment variable
+            base_url = os.getenv("DWANI_AI_API_BASE_URL")
+
+            if not base_url:
+                raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
+
+            # Define the endpoint path
+            endpoint = f"/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+
+                # Construct the full API URL
+            document_query_url = f"{base_url.rstrip('/')}{endpoint}"
+
+
             # Make POST request to the external visual query API
-            document_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
             headers = {
                 "accept": "application/json"
             }
