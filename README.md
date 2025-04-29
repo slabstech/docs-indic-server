@@ -65,15 +65,8 @@ Document parser for Indian languages
 ### Running with FastAPI Server
 - 
   ```bash
-  python src/server/docs_api.py --port 7860 --host 0.0.0.0
+  python src/server/docs_api_dwani.py --port 7860 --host 0.0.0.0
   ```
-
-
-
-
-wget https://github.com/slabstech/docs-indic-server/blob/01e811210d56e655091313c1df8481d11e7640a6/install-script.sh
-chmod +x install-script.sh
-bash install-script.sh
 
 
 ### GPU server setup
@@ -112,10 +105,6 @@ bash install-script.sh
 
 -- 
 
-For Translation 
-
-
-
 ## Contributing
 
 We welcome contributions! Please read the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute to this project.
@@ -132,6 +121,15 @@ Also you can join the [discord group](https://discord.gg/WZMCerEZ2P) to collabor
 
 
 <!-- 
+
+
+
+
+wget https://github.com/slabstech/docs-indic-server/blob/01e811210d56e655091313c1df8481d11e7640a6/install-script.sh
+chmod +x install-script.sh
+bash install-script.sh
+
+
 
 ## Download Qwen VL
 
