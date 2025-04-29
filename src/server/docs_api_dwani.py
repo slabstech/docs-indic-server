@@ -385,12 +385,12 @@ async def extract_text_visual_query(
         }
 
         # Make POST request to the external visual query API
-        visual_query_url = "http://0.0.0.0:7862/v1/visual_query/"
+        document_query_url = "http://0.0.0.0:7862/v1/document_query/"
         headers = {
             "accept": "application/json"
         }
         try:
-            response = requests.post(visual_query_url, headers=headers, files=files, data=data)
+            response = requests.post(document_query_url, headers=headers, files=files, data=data)
             response.raise_for_status()  # Raise exception for bad status codes
             response_data = response.json()
             page_content = response_data.get("answer", "")
@@ -491,12 +491,12 @@ async def extract_text_visual_query_eng(
         }
 
         # Make POST request to the external visual query API
-        visual_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/visual_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+        document_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
         headers = {
             "accept": "application/json"
         }
         try:
-            response = requests.post(visual_query_url, headers=headers, files=files, data=data, timeout=30)
+            response = requests.post(document_query_url, headers=headers, files=files, data=data, timeout=30)
             response.raise_for_status()  # Raise exception for bad status codes
             response_data = response.json()
             page_content = response_data.get("answer", "")
@@ -637,12 +637,12 @@ async def extract_text_all_pages(
             }
 
             # Make POST request to the external visual query API
-            visual_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/visual_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+            document_query_url = f"https://slabstech-dhwani-server-workshop.hf.space/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
             headers = {
                 "accept": "application/json"
             }
             try:
-                response = requests.post(visual_query_url, headers=headers, files=files, data=data, timeout=30)
+                response = requests.post(document_query_url, headers=headers, files=files, data=data, timeout=30)
                 response.raise_for_status()  # Raise exception for bad status codes
                 response_data = response.json()
                 page_content = response_data.get("answer", "")
