@@ -499,7 +499,7 @@ async def extract_text_visual_query_eng(
             raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
 
         # Define the endpoint path
-        endpoint = f"/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+        endpoint = f"/v1/document_query/?src_lang={src_lang}&tgt_lang={tgt_lang}"
 
             # Construct the full API URL
         document_query_url = f"{base_url.rstrip('/')}{endpoint}"
@@ -659,7 +659,7 @@ async def extract_text_all_pages(
                 raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
 
             # Define the endpoint path
-            endpoint = f"/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+            endpoint = f"/v1/document_query/?src_lang={src_lang}&tgt_lang={tgt_lang}"
 
                 # Construct the full API URL
             document_query_url = f"{base_url.rstrip('/')}{endpoint}"
@@ -825,7 +825,7 @@ Tile    Args:
             raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
 
         # Define the batch endpoint
-        endpoint = "/v1/document_query_batch"
+        endpoint = "/v1/document_query_batch/"
         batch_query_url = f"{base_url.rstrip('/')}{endpoint}"
 
         # Make POST request to the batch visual query API
