@@ -626,6 +626,7 @@ async def extract_text_all_pages(
         # Initialize result list
         result = []
 
+        timeout_total = 30 * num_pages
         # Process each page
         for page_number in range(1, num_pages + 1):
             # Render the page to an image
@@ -670,7 +671,7 @@ async def extract_text_all_pages(
                 "accept": "application/json"
             }
             try:
-                response = requests.post(document_query_url, headers=headers, files=files, data=data, timeout=30)
+                response = requests.post(document_query_url, headers=headers, files=files, data=data, timeout=timeout_total)
                 response.raise_for_status()  # Raise exception for bad status codes
                 response_data = response.json()
                 page_content = response_data.get("answer", "")
@@ -792,6 +793,7 @@ Tile    Args:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read PDF: {str(e)}")
 
+        timeout_total = 30 * num_pages
         # Prepare images for batch processing
         image_list = []
         for page_number in range(1, num_pages + 1):
@@ -834,7 +836,7 @@ Tile    Args:
             "content-type": "application/json"
         }
         try:
-            response = requests.post(batch_query_url, headers=headers, json=payload, timeout=60)
+            response = requests.post(batch_query_url, headers=headers, json=payload, timeout=timeout_total)
             response.raise_for_status()
             response_data = response.json()
         except requests.HTTPError as e:
