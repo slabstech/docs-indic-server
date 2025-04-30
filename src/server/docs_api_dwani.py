@@ -705,6 +705,173 @@ async def extract_text_all_pages(
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
     
 
+from fastapi import FastAPI, File, UploadFile, Body, HTTPException
+from fastapi.responses import JSONResponse
+import tempfile
+import base64
+import os
+import requests
+from pypdf import PdfReader
+
+app = FastAPI()
+
+@app.post(
+    "/extract-text-all-pages-batch/",
+    response_model=dict,
+    summary="Extract text from all PDF pages using visual query batch",
+    description=(
+        "Extracts text from all pages of a PDF file by rendering each page as an image and processing them with an external batch visual query API. "
+        "The user-provided prompt is used to generate a description of each page's content. "
+        "Source and target languages are provided as input. Returns a JSON object with page number and extracted text for each page."
+    ),
+    response_description="A JSON object containing a list of dictionaries, each with the page number and extracted text for that page."
+)
+async def extract_text_all_pages_batch(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    ),
+    tgt_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Target language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    ),
+    prompt: str = Body(
+        default="Return the plain text representation of this document as if you were reading it naturally",
+        embed=True,
+        description="The prompt to send to the visual query API (e.g., 'describe the image', 'extract text from the image').",
+        example="extract text from the image"
+    )
+):
+    """
+    Extract text from all pages of a PDF file using an external batch visual query API.
+
+Tile    Args:
+        file (UploadFile): The PDF file to process.
+        src_lang (str): Source language code (e.g., 'eng_Latn' for English). Defaults to 'eng_Latn'.
+        tgt_lang (str): Target language code (e.g., 'eng_Latn' for English). Defaults to 'eng_Latn'.
+        prompt (str): The prompt to send to the visual query API. Defaults to 'describe the image'.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - pages: A list of dictionaries, each with:
+                - page_number: The page number (1-based indexing).
+                - page_text: The extracted text from the page.
+
+    Raises:
+        HTTPException: If the file is not a PDF, processing fails, or the visual query API request fails.
+
+    Example:
+        ```json
+        {
+            "pages": [
+                {"page_number": 1, "page_text": "Text from page 1"},
+                {"page_number": 2, "page_text": "Text from page 2"}
+            ]
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Get the number of pages in the PDF
+        try:
+            pdf_reader = PdfReader(temp_file_path)
+            num_pages = len(pdf_reader.pages)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read PDF: {str(e)}")
+
+        # Prepare images for batch processing
+        image_list = []
+        for page_number in range(1, num_pages + 1):
+            try:
+                # Render the page to base64-encoded PNG
+                image_base64 = render_pdf_to_base64png(
+                    temp_file_path, page_number, target_longest_image_dim=1024
+                )
+                image_list.append({
+                    "page_number": page_number,
+                    "image": image_base64
+                })
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to render PDF page {page_number}: {str(e)}")
+
+        # Prepare JSON payload for the batch endpoint
+        payload = {
+            "images": [
+                {
+                    "image": img["image"],
+                    "query": prompt
+                } for img in image_list
+            ],
+            "src_lang": src_lang,
+            "tgt_lang": tgt_lang
+        }
+
+        # Get the base URL from environment variable
+        base_url = os.getenv("DWANI_AI_API_BASE_URL")
+        if not base_url:
+            raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
+
+        # Define the batch endpoint
+        endpoint = "/v1/document_query_batch"
+        batch_query_url = f"{base_url.rstrip('/')}{endpoint}"
+
+        # Make POST request to the batch visual query API
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json"
+        }
+        try:
+            response = requests.post(batch_query_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            response_data = response.json()
+        except requests.HTTPError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Batch visual query API request failed: {response.status_code} {response.reason}: {response.text}"
+            )
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Batch visual query API request failed: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid batch visual query API response: {str(e)}")
+
+        # Process the batch response
+        result = []
+        for idx, page_response in enumerate(response_data.get("results", [])):
+            page_number = image_list[idx]["page_number"]
+            page_content = page_response.get("answer", "")
+            result.append({
+                "page_number": page_number,
+                "page_text": page_content
+            })
+
+        # Clean up temporary file
+        os.remove(temp_file_path)
+
+        return JSONResponse(content={"pages": result})
+
+    except Exception as e:
+        # Clean up in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7861)
