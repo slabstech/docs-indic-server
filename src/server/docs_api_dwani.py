@@ -715,7 +715,6 @@ import requests
 from pypdf import PdfReader
 
 
-
 @app.post(
     "/extract-text-all-pages-batch/",
     response_model=dict,
@@ -748,34 +747,6 @@ async def extract_text_all_pages_batch(
         example="extract text from the image"
     )
 ):
-    """
-    Extract text from all pages of a PDF file using an external batch visual query API.
-
-Tile    Args:
-        file (UploadFile): The PDF file to process.
-        src_lang (str): Source language code (e.g., 'eng_Latn' for English). Defaults to 'eng_Latn'.
-        tgt_lang (str): Target language code (e.g., 'eng_Latn' for English). Defaults to 'eng_Latn'.
-        prompt (str): The prompt to send to the visual query API. Defaults to 'describe the image'.
-
-    Returns:
-        JSONResponse: A dictionary containing:
-            - pages: A list of dictionaries, each with:
-                - page_number: The page number (1-based indexing).
-                - page_text: The extracted text from the page.
-
-    Raises:
-        HTTPException: If the file is not a PDF, processing fails, or the visual query API request fails.
-
-    Example:
-        ```json
-        {
-            "pages": [
-                {"page_number": 1, "page_text": "Text from page 1"},
-                {"page_number": 2, "page_text": "Text from page 2"}
-            ]
-        }
-        ```
-    """
     try:
         # Validate file type
         if not file.filename.lower().endswith(".pdf"):
@@ -793,7 +764,9 @@ Tile    Args:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read PDF: {str(e)}")
 
+        # Adjust timeout based on number of pages
         timeout_total = 30 * num_pages
+
         # Prepare images for batch processing
         image_list = []
         for page_number in range(1, num_pages + 1):
@@ -814,7 +787,8 @@ Tile    Args:
             "images": [
                 {
                     "image": img["image"],
-                    "query": prompt
+                    "query": prompt,
+                    "page_number": img["page_number"]
                 } for img in image_list
             ],
             "src_lang": src_lang,
@@ -839,6 +813,9 @@ Tile    Args:
             response = requests.post(batch_query_url, headers=headers, json=payload, timeout=timeout_total)
             response.raise_for_status()
             response_data = response.json()
+            if not isinstance(response_data, dict):
+                raise ValueError(f"Expected dictionary response, got: {response_data}")
+            results = response_data.get("results", [])
         except requests.HTTPError as e:
             raise HTTPException(
                 status_code=500,
@@ -846,14 +823,14 @@ Tile    Args:
             )
         except requests.RequestException as e:
             raise HTTPException(status_code=500, detail=f"Batch visual query API request failed: {str(e)}")
-        except (KeyError, ValueError) as e:
+        except ValueError as e:
             raise HTTPException(status_code=500, detail=f"Invalid batch visual query API response: {str(e)}")
 
         # Process the batch response
         result = []
-        for idx, page_response in enumerate(response_data.get("results", [])):
-            page_number = image_list[idx]["page_number"]
-            page_content = page_response.get("answer", "")
+        for page_response in results:
+            page_number = page_response.get("page_number")
+            page_content = page_response.get("page_text", "")
             result.append({
                 "page_number": page_number,
                 "page_text": page_content
@@ -872,8 +849,7 @@ Tile    Args:
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7861)
