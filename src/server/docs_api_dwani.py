@@ -713,7 +713,7 @@ import os
 import requests
 from pypdf import PdfReader
 
-app = FastAPI()
+
 
 @app.post(
     "/extract-text-all-pages-batch/",
