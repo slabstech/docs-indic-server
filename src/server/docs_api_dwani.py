@@ -499,7 +499,7 @@ async def extract_text_visual_query_eng(
             raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
 
         # Define the endpoint path
-        endpoint = f"/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+        endpoint = f"/v1/document_query/?src_lang={src_lang}&tgt_lang={tgt_lang}"
 
             # Construct the full API URL
         document_query_url = f"{base_url.rstrip('/')}{endpoint}"
@@ -626,6 +626,7 @@ async def extract_text_all_pages(
         # Initialize result list
         result = []
 
+        timeout_total = 30 * num_pages
         # Process each page
         for page_number in range(1, num_pages + 1):
             # Render the page to an image
@@ -659,7 +660,7 @@ async def extract_text_all_pages(
                 raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
 
             # Define the endpoint path
-            endpoint = f"/v1/document_query?src_lang={src_lang}&tgt_lang={tgt_lang}"
+            endpoint = f"/v1/document_query/?src_lang={src_lang}&tgt_lang={tgt_lang}"
 
                 # Construct the full API URL
             document_query_url = f"{base_url.rstrip('/')}{endpoint}"
@@ -670,7 +671,7 @@ async def extract_text_all_pages(
                 "accept": "application/json"
             }
             try:
-                response = requests.post(document_query_url, headers=headers, files=files, data=data, timeout=30)
+                response = requests.post(document_query_url, headers=headers, files=files, data=data, timeout=timeout_total)
                 response.raise_for_status()  # Raise exception for bad status codes
                 response_data = response.json()
                 page_content = response_data.get("answer", "")
@@ -705,6 +706,294 @@ async def extract_text_all_pages(
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
     
 
+from fastapi import FastAPI, File, UploadFile, Body, HTTPException
+from fastapi.responses import JSONResponse
+import tempfile
+import base64
+import os
+import requests
+from pypdf import PdfReader
+
+
+@app.post(
+    "/extract-text-all-pages-batch/",
+    response_model=dict,
+    summary="Extract text from all PDF pages using visual query batch",
+    description=(
+        "Extracts text from all pages of a PDF file by rendering each page as an image and processing them with an external batch visual query API. "
+        "The user-provided prompt is used to generate a description of each page's content. "
+        "Source and target languages are provided as input. Returns a JSON object with page number and extracted text for each page."
+    ),
+    response_description="A JSON object containing a list of dictionaries, each with the page number and extracted text for that page."
+)
+async def extract_text_all_pages_batch(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    ),
+    tgt_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Target language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    ),
+    prompt: str = Body(
+        default="Return the plain text representation of this document as if you were reading it naturally",
+        embed=True,
+        description="The prompt to send to the visual query API (e.g., 'describe the image', 'extract text from the image').",
+        example="extract text from the image"
+    )
+):
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Get the number of pages in the PDF
+        try:
+            pdf_reader = PdfReader(temp_file_path)
+            num_pages = len(pdf_reader.pages)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read PDF: {str(e)}")
+
+        # Adjust timeout based on number of pages
+        timeout_total = 30 * num_pages
+
+        # Prepare images for batch processing
+        image_list = []
+        for page_number in range(1, num_pages + 1):
+            try:
+                # Render the page to base64-encoded PNG
+                image_base64 = render_pdf_to_base64png(
+                    temp_file_path, page_number, target_longest_image_dim=1024
+                )
+                image_list.append({
+                    "page_number": page_number,
+                    "image": image_base64
+                })
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to render PDF page {page_number}: {str(e)}")
+
+        # Prepare JSON payload for the batch endpoint
+        payload = {
+            "images": [
+                {
+                    "image": img["image"],
+                    "query": prompt,
+                    "page_number": img["page_number"]
+                } for img in image_list
+            ],
+            "src_lang": src_lang,
+            "tgt_lang": tgt_lang
+        }
+
+        # Get the base URL from environment variable
+        base_url = os.getenv("DWANI_AI_API_BASE_URL")
+        if not base_url:
+            raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
+
+        # Define the batch endpoint
+        endpoint = "/v1/document_query_batch/"
+        batch_query_url = f"{base_url.rstrip('/')}{endpoint}"
+
+        # Make POST request to the batch visual query API
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json"
+        }
+        try:
+            response = requests.post(batch_query_url, headers=headers, json=payload, timeout=timeout_total)
+            response.raise_for_status()
+            response_data = response.json()
+            if not isinstance(response_data, dict):
+                raise ValueError(f"Expected dictionary response, got: {response_data}")
+            results = response_data.get("results", [])
+        except requests.HTTPError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Batch visual query API request failed: {response.status_code} {response.reason}: {response.text}"
+            )
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Batch visual query API request failed: {str(e)}")
+        except ValueError as e:
+            raise HTTPException(status_code=500, detail=f"Invalid batch visual query API response: {str(e)}")
+
+        # Process the batch response
+        result = []
+        for page_response in results:
+            page_number = page_response.get("page_number")
+            page_content = page_response.get("page_text", "")
+            result.append({
+                "page_number": page_number,
+                "page_text": page_content
+            })
+
+        # Clean up temporary file
+        os.remove(temp_file_path)
+
+        return JSONResponse(content={"pages": result})
+
+    except Exception as e:
+        # Clean up in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    
+from fastapi import FastAPI, File, UploadFile, Body, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+import requests
+import json
+
+# Pydantic model for the summarize request
+class SummarizeAllPagesRequest(BaseModel):
+    src_lang: str = Field(
+        default="eng_Latn",
+        description="Source language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="eng_Latn"
+    )
+    tgt_lang: str = Field(
+        default="eng_Latn",
+        description="Target language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="eng_Latn"
+    )
+    prompt: str = Field(
+        default="Summarize the document in 3 sentences.",
+        description="The prompt to summarize the extracted text from all pages (e.g., 'Summarize in 3 sentences', 'List key points in bullet form').",
+        example="Summarize the document in 3 sentences."
+    )
+
+@app.post(
+    "/summarize-all-pages/",
+    response_model=dict,
+    summary="Extract text from all PDF pages and summarize using a custom prompt via external chat API",
+    description=(
+        "Extracts text from all pages of a PDF file using the batch visual query API and generates a summary of the extracted text based on a user-provided prompt. "
+        "The summary is generated using an external chat API ."
+    ),
+    response_description=(
+        "A JSON object containing a list of extracted text for each page and a summary of the entire document based on the provided prompt."
+    )
+)
+async def summarize_all_pages(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="eng_Latn"
+    ),
+    tgt_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Target language code (e.g., 'eng_Latn' for English, 'kan_Knda' for Kannada).",
+        example="eng_Latn"
+    ),
+    prompt: str = Body(
+        default="Summarize the document in 3 sentences.",
+        embed=True,
+        description="The prompt to summarize the extracted text from all pages (e.g., 'Summarize in 3 sentences', 'List key points in bullet form').",
+        example="Summarize the document in 3 sentences."
+    )
+):
+    """
+    Extract text from all pages of a PDF file and summarize it using a custom prompt via an external chat API.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        src_lang (str): Source language code (e.g., 'eng_Latn' for English). Defaults to 'eng_Latn'.
+        tgt_lang (str): Target language code (e.g., 'eng_Latn' for English). Defaults to 'eng_Latn'.
+        prompt (str): The prompt to summarize the extracted text. Defaults to 'Summarize the document in 3 sentences.'
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - pages: A list of dictionaries, each with:
+                - page_number: The page number (1-based indexing).
+                - page_text: The extracted text from the page.
+            - summary: The summary of the extracted text based on the provided prompt.
+
+    Raises:
+        HTTPException: If the file is not a PDF, processing fails, or the visual query/summary generation fails.
+
+    Example:
+        ```json
+        {
+            "pages": [
+                {"page_number": 1, "page_text": "Text from page 1"},
+                {"page_number": 2, "page_text": "Text from page 2"}
+            ],
+            "summary": "The document discusses... [3-sentence summary]"
+        }
+        ```
+    """
+    try:
+        # Reuse the extract-text-all-pages-batch logic to get text from all pages
+        extract_response = await extract_text_all_pages_batch(
+            file=file,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            prompt="Return the plain text representation of this document as if you were reading it naturally"
+        )
+        extracted_pages = extract_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_pages)
+        pages = extracted_json["pages"]
+
+        # Combine all page texts into a single string for summarization
+        combined_text = "\n\n".join(page["page_text"] for page in pages)
+
+        # Generate summary using the external chat API
+
+        # Get the base URL from environment variable
+        base_url = os.getenv("DWANI_AI_API_BASE_URL")
+        if not base_url:
+            raise ValueError("DWANI_AI_API_BASE_URL environment variable is not set")
+
+        # Define the batch endpoint
+        endpoint = "/v1/chat"
+        chat_api_url = f"{base_url.rstrip('/')}{endpoint}"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "prompt": f"{prompt}\n\nDocument text:\n{combined_text}",
+            "src_lang": src_lang,
+            "tgt_lang": tgt_lang
+        }
+        try:
+            response = requests.post(chat_api_url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()  # Raise exception for bad status codes
+            response_data = response.json()
+            summary = response_data.get("response", "")
+        except requests.HTTPError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Chat API request failed: {response.status_code} {response.reason}: {response.text}"
+            )
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Chat API request failed: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"Invalid chat API response: {str(e)}")
+
+        return JSONResponse(content={
+            "pages": pages,
+            "summary": summary
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7861)
