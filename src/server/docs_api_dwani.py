@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Body
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 import base64
@@ -9,6 +9,10 @@ import tempfile
 import os
 import requests
 from typing import List, Union
+from time import time
+from logging_config import logger
+
+
 from pypdf import PdfReader
 from pydantic import BaseModel, Field
 from olmocr.data.renderpdf import render_pdf_to_base64png
@@ -1252,7 +1256,19 @@ async def summarize_all_pages_v0(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
-    
+
+
+# Add Timing Middleware
+@app.middleware("http")
+async def add_request_timing(request: Request, call_next):
+    start_time = time()
+    response = await call_next(request)
+    end_time = time()
+    duration = end_time - start_time
+    logger.info(f"Request to {request.url.path} took {duration:.3f} seconds")
+    response.headers["X-Response-Time"] = f"{duration:.3f}"
+    return response
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7861)
