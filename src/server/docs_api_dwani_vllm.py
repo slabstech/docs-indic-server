@@ -114,7 +114,7 @@ async def root():
     return {"message": "Combined OCR API is running"}
 
 @app.post(
-    "/extract-text-old/",
+    "/extract-text/",
     response_model=dict,
     summary="Extract text from a PDF page",
     description=(
@@ -191,7 +191,7 @@ async def extract_text_from_pdf(
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post(
-    "/ocr-old",
+    "/ocr",
     response_model=dict,
     summary="Extract text from a PNG image",
     description=(
@@ -239,7 +239,7 @@ async def ocr_image(file: UploadFile = File(..., description="The PNG image to p
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 @app.post(
-    "/summarize-pdf-old/",
+    "/summarize-pdf",
     response_model=dict,
     summary="Extract and summarize text from a single PDF page",
     description=(
@@ -320,7 +320,7 @@ async def summarize_pdf(
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
 
 @app.post(
-    "/custom-prompt-pdf-old/",
+    "/custom-prompt-pdf",
     response_model=dict,
     summary="Extract and process text from a single PDF page with a custom prompt",
     description=(
@@ -414,4 +414,4 @@ async def custom_prompt_pdf(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7861)
+    uvicorn.run(app, host="0.0.0.0", port=7864)
