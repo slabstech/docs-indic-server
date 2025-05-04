@@ -21,7 +21,7 @@ import uvicorn
 
 # Initialize FastAPI app with enhanced metadata
 app = FastAPI(
-    title="Combined OCR API",
+    title="dwani.ai - Document server API",
     description=(
         "API for extracting text from PDF pages and PNG images using RolmOCR, with functionality to "
         "summarize PDF content, process it with custom prompts, translate summaries to Kannada, or translate "
