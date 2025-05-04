@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Body
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 import base64
@@ -16,7 +16,8 @@ from olmocr.prompts import build_finetuning_prompt
 from olmocr.prompts.anchor import get_anchor_text
 import argparse
 import uvicorn
-
+from time import time
+from logging_config import logger
 
 
 # Initialize FastAPI app with enhanced metadata
@@ -414,6 +415,18 @@ async def custom_prompt_pdf(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating response: {str(e)}")
+
+
+# Add Timing Middleware
+@app.middleware("http")
+async def add_request_timing(request: Request, call_next):
+    start_time = time()
+    response = await call_next(request)
+    end_time = time()
+    duration = end_time - start_time
+    logger.info(f"Request to {request.url.path} took {duration:.3f} seconds")
+    response.headers["X-Response-Time"] = f"{duration:.3f}"
+    return response
 
 
 if __name__ == "__main__":
