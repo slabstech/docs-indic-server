@@ -14,6 +14,10 @@ from pydantic import BaseModel, Field
 from olmocr.data.renderpdf import render_pdf_to_base64png
 from olmocr.prompts import build_finetuning_prompt
 from olmocr.prompts.anchor import get_anchor_text
+import argparse
+import uvicorn
+
+
 
 # Initialize FastAPI app with enhanced metadata
 app = FastAPI(
@@ -413,5 +417,10 @@ async def custom_prompt_pdf(
 
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7864)
+
+    parser = argparse.ArgumentParser(description="Run dwani.ai - Document server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=7864, help="Port to bind (default: 7864)")
+    args = parser.parse_args()
+
+    uvicorn.run(app, host=args.host, port=args.port)
