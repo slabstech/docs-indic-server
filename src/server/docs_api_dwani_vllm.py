@@ -593,6 +593,122 @@ async def indic_custom_prompt_pdf(
 
 
 
+@app.post(
+    "/indic-summarize-pdf",
+    response_model=dict,
+    summary="Extract, summarize, and translate text from a single PDF page",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR, generates a 3-5 sentence summary "
+        "using chat completion, and translates the summary into a target language."
+    ),
+    response_description=(
+        "A JSON object containing the extracted text, summary, translated summary, and processed page number."
+    )
+)
+async def indic_summarize_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description="The page number to extract and summarize (1-based indexing).",
+        ge=1,
+        example=1
+    ),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language for translation (e.g., 'eng_Latn' for English).",
+        example="eng_Latn"
+    ),
+    tgt_lang: str = Body(
+        default="kan_Knda",
+        embed=True,
+        description="Target language for translation (e.g., 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    )
+):
+    """
+    Extract text from a specified page of a PDF file, generate a summary, and translate it.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract and summarize (1-based indexing). Defaults to 1.
+        src_lang (str): Source language for translation (e.g., 'eng_Latn'). Defaults to English.
+        tgt_lang (str): Target language for translation (e.g., 'kan_Knda'). Defaults to Kannada.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - original_text: Text extracted from the specified page.
+            - summary: A 3-5 sentence summary of the extracted text.
+            - translated_summary: The summary translated into the target language.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, or processing/translation fails.
+
+    Example:
+        ```json
+        {
+            "original_text": "Text from page 1",
+            "summary": "The document discusses... [3-5 sentence summary]",
+            "translated_summary": "Translated summary in target language",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Extract text using existing endpoint logic
+        text_response = await extract_text_from_pdf(file, page_number)
+        extracted_text = text_response.body.decode("utf-8")
+        extracted_json = json.loads(extracted_text)
+        extracted_text = extracted_json["page_content"]
+
+        # Generate summary using OpenAI chat completion
+        summary_response = openai_client.chat.completions.create(
+            model=rolm_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Summarize the following text in 3-5 sentences:\n\n{extracted_text}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+        summary = summary_response.choices[0].message.content
+
+        # Translate the summary
+        translation_payload = {
+            "sentences": [summary],
+            "src_lang": src_lang,
+            "tgt_lang": tgt_lang
+        }
+        translation_response = requests.post(
+            translation_api_url,
+            json=translation_payload,
+            headers={"accept": "application/json", "Content-Type": "application/json"}
+        )
+        translation_response.raise_for_status()
+        translation_result = translation_response.json()
+        translated_summary = translation_result["translations"][0]
+
+        return JSONResponse(content={
+            "original_text": extracted_text,
+            "summary": summary,
+            "translated_summary": translated_summary,
+            "processed_page": page_number
+        })
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error querying translation API: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
+
+
 # Add Timing Middleware
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
