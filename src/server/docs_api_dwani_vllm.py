@@ -671,12 +671,15 @@ async def indic_custom_prompt_pdf(
         translation_result = translation_response.json()
         translated_response = translation_result["translations"][0]
 
-        return JSONResponse(content={
+        customPDFResponse = JSONResponse(content={
             "original_text": extracted_text,
             "response": response,
             "translated_response": translated_response,
             "processed_page": page_number
         })
+
+        logger.info(customPDFResponse)
+        return customPDFResponse
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error querying translation API: {str(e)}")
