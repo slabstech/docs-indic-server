@@ -428,7 +428,7 @@ from pydantic import BaseModel, Field
 
 
 # Translation API endpoint (from reference)
-translation_api_url = "https://0.0.0.0:7862/v1/translate"
+translation_api_url = "http://0.0.0.0:7862/v1/translate"
 
 # Supported language codes (based on reference)
 language_options = [
