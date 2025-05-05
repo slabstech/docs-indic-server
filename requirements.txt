@@ -153,6 +153,7 @@ pycountry==24.6.1
 pycparser==2.22
 pydantic==2.11.3
 pydantic_core==2.33.1
+pydantic_settings==2.9.1
 Pygments==2.19.1
 pynvml==12.0.0
 pypdf==5.4.0
