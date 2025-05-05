@@ -709,6 +709,130 @@ async def indic_summarize_pdf(
         raise HTTPException(status_code=500, detail=f"Error processing PDF or generating summary: {str(e)}")
 
 
+@app.post(
+    "/indic-extract-text/",
+    response_model=dict,
+    summary="Extract and translate text from a PDF page",
+    description=(
+        "Extracts text from a specific page of a PDF file using RolmOCR and translates it into a target language. "
+        "The page is rendered as an image, and OCR is performed to extract the text content."
+    ),
+    response_description="A JSON object containing the extracted text, translated text, and processed page number."
+)
+async def indic_extract_text_from_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description="The page number to extract text from (1-based indexing).",
+        ge=1,
+        example=1
+    ),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language for translation (e.g., 'eng_Latn' for English).",
+        example="eng_Latn"
+    ),
+    tgt_lang: str = Body(
+        default="kan_Knda",
+        embed=True,
+        description="Target language for translation (e.g., 'kan_Knda' for Kannada).",
+        example="kan_Knda"
+    )
+):
+    """
+    Extract text from a specific page of a PDF file using RolmOCR and translate it.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract text from (1-based indexing). Defaults to 1.
+        src_lang (str): Source language for translation (e.g., 'eng_Latn'). Defaults to English.
+        tgt_lang (str): Target language for translation (e.g., 'kan_Knda'). Defaults to Kannada.
+
+    Returns:
+        JSONResponse: A dictionary containing:
+            - page_content: The extracted text from the specified page.
+            - translated_content: The extracted text translated into the target language.
+            - processed_page: The page number processed.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, or processing/translation fails.
+
+    Example:
+        ```json
+        {
+            "page_content": "Extracted text from the PDF page",
+            "translated_content": "Translated text in target language",
+            "processed_page": 1
+        }
+        ```
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Render the specified page to an image
+        try:
+            image_base64 = render_pdf_to_base64png(
+                temp_file_path, page_number, target_longest_image_dim=1024
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
+
+        # Perform OCR using RolmOCR
+        try:
+            page_content = ocr_page_with_rolm(image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+
+        # Translate the extracted text
+        try:
+            translation_payload = {
+                "sentences": [page_content],
+                "src_lang": src_lang,
+                "tgt_lang": tgt_lang
+            }
+            translation_response = requests.post(
+                translation_api_url,
+                json=translation_payload,
+                headers={"accept": "application/json", "Content-Type": "application/json"}
+            )
+            translation_response.raise_for_status()
+            translation_result = translation_response.json()
+            translated_content = translation_result["translations"][0]
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Error querying translation API: {str(e)}")
+
+        # Clean up temporary file
+        try:
+            os.remove(temp_file_path)
+        except:
+            pass
+
+        return JSONResponse(content={
+            "page_content": page_content,
+            "translated_content": translated_content,
+            "processed_page": page_number
+        })
+
+    except Exception as e:
+        # Clean up in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+
 # Add Timing Middleware
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
