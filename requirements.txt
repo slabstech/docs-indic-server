@@ -133,6 +133,7 @@ packaging==24.2
 pandas==2.2.3
 parso==0.8.4
 partial-json-parser==0.2.1.1.post5
+pdfplumber
 pexpect==4.9.0
 pikepdf==9.7.0
 pillow==11.2.1
@@ -169,6 +170,7 @@ ray==2.43.0
 referencing==0.36.2
 regex==2024.11.6
 requests==2.32.3
+reportlab
 rich==13.9.4
 rich-toolkit==0.14.1
 rpds-py==0.24.0

@@ -104,6 +104,14 @@ Document parser for Indian languages
 
 
 -- 
+For  kannad pdf 
+we need to add - NotoSans Kannada font from google
+
+https://fonts.google.com/noto/specimen/Noto+Sans+Kannada
+
+
+https://github.com/googlefonts/noto-fonts
+--- 
 
 ## Contributing
 
@@ -118,7 +126,19 @@ Also you can join the [discord group](https://discord.gg/WZMCerEZ2P) to collabor
     - [pixtral-12-b-2409](https://huggingface.co/mistralai/Pixtral-12B-2409)
 
 
+## Citations
 
+```bibtex citation_1.bib
+@misc{poznanski2025olmocrunlockingtrillionstokens,
+      title={olmOCR: Unlocking Trillions of Tokens in PDFs with Vision Language Models}, 
+      author={Jake Poznanski and Jon Borchardt and Jason Dunkelberger and Regan Huff and Daniel Lin and Aman Rangapur and Christopher Wilhelm and Kyle Lo and Luca Soldaini},
+      year={2025},
+      eprint={2502.18443},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2502.18443}, 
+}
+```
 
 <!-- 
 
