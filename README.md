@@ -104,6 +104,14 @@ Document parser for Indian languages
 
 
 -- 
+For  kannad pdf 
+we need to add - NotoSans Kannada font from google
+
+https://fonts.google.com/noto/specimen/Noto+Sans+Kannada
+
+
+https://github.com/googlefonts/noto-fonts
+--- 
 
 ## Contributing
 
