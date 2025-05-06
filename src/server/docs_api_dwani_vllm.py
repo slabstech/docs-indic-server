@@ -34,6 +34,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 import pdfplumber
 
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
 from openai import OpenAI
 
 
@@ -1080,6 +1084,66 @@ async def pdf_recreation_indic_extract_text(
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+def generate_pdf_from_text(text: str, output_path: str):
+    """Generate a PDF from the given text using reportlab."""
+    try:
+        doc = SimpleDocTemplate(output_path, pagesize=A4)
+        styles = getSampleStyleSheet()
+        style = styles["Normal"]
+        story = []
+
+        # Split text into paragraphs (simple split by newlines)
+        paragraphs = text.split("\n")
+        for para in paragraphs:
+            if para.strip():
+                story.append(Paragraph(para.strip(), style))
+                story.append(Spacer(1, 12))
+
+        doc.build(story)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+
+@app.post(
+    "/pdf-recreation/ocr",
+    tags=["pdf-recreation"],
+    summary="Extract text from a PNG image and generate a PDF",
+    description=(
+        "Performs OCR on a PNG image using RolmOCR and generates a PDF containing the extracted text."
+    ),
+    response_description="A downloadable PDF file containing the extracted text from the image."
+)
+async def pdf_recreation_ocr_image(file: UploadFile = File(..., description="The PNG image to process. Must be a valid PNG.")):
+    if not file.content_type.startswith("image/png"):
+        raise HTTPException(status_code=400, detail="Only PNG images are supported")
+
+    try:
+        image_bytes = await file.read()
+        image = BytesIO(image_bytes)
+        img_base64 = encode_image(image)
+        text = ocr_page_with_rolm(img_base64)
+
+        # Generate PDF with extracted text
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            output_pdf_path = temp_pdf.name
+            generate_pdf_from_text(text, output_pdf_path)
+
+        return FileResponse(
+            path=output_pdf_path,
+            filename="extracted_text_image.pdf",
+            media_type="application/pdf",
+            background=lambda: os.remove(output_pdf_path)
+        )
+
+    except Exception as e:
+        if 'output_pdf_path' in locals():
+            try:
+                os.remove(output_pdf_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 
 # Add Timing Middleware
