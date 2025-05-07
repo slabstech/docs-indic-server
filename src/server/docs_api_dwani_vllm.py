@@ -1451,13 +1451,15 @@ async def indic_extract_kannada_pdf(
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
+
 @app.post(
     "/indic-custom-prompt-kannada-pdf/",
     tags=["pdf-recreation"],
     summary="Extract text, process with custom prompt, translate to Kannada, and generate a PDF with Kannada font",
     description=(
         "Extracts text from a specified page of a PDF file using RolmOCR, processes it with a user-provided custom prompt, "
-        "translates the response to Kannada, and generates a PDF with the translated text using the NotoSansKannada font."
+        "translates the response to Kannada, and generates a PDF with the translated text using the NotoSansKannada font, "
+        "with proper line breaks for readability."
     ),
     response_description="A downloadable PDF file containing the translated Kannada response from the custom prompt."
 )
@@ -1493,7 +1495,7 @@ async def indic_custom_prompt_kannada_pdf(
         src_lang (str): Source language for translation (e.g., 'eng_Latn'). Defaults to English.
 
     Returns:
-        FileResponse: A downloadable PDF file with the translated Kannada response.
+        FileResponse: A downloadable PDF file with the translated Kannada response, properly formatted with line breaks.
 
     Raises:
         HTTPException: If the file is not a PDF, the page number is invalid, the prompt is empty,
@@ -1567,23 +1569,48 @@ async def indic_custom_prompt_kannada_pdf(
             translation_result = translation_response.json()
             translated_response = translation_result["translations"][0]
         except requests.exceptions.RequestException as e:
-            raise HTTPException(status_code=500, detail=f"Error查询 translation API: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error querying translation API: {str(e)}")
 
-        # Generate PDF with translated Kannada response
+        # Generate PDF with translated Kannada response, with proper line breaks
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
             output_pdf_path = temp_pdf.name
             w, h = A4
             c = canvas.Canvas(output_pdf_path, pagesize=A4)
             c.setFont('NotoSansKannada', 12)  # Use NotoSansKannada font
-            # Simple layout: draw text line-by-line
-            lines = translated_response.split('\n')
-            y_position = h - 100
+
+            # Define margins and text area
+            left_margin = 1 * inch
+            right_margin = 1 * inch
+            max_width = w - left_margin - right_margin
+            line_height = 14  # Line spacing in points
+            y_position = h - 1 * inch  # Start 1 inch from top
+
+            # Simple text wrapping: split into words and build lines
+            words = translated_response.split()
+            current_line = []
+            current_width = 0
+            lines = []
+
+            for word in words:
+                # Estimate word width (approximate, as exact width depends on font metrics)
+                word_width = c.stringWidth(word, 'NotoSansKannada', 12)
+                if current_width + word_width <= max_width:
+                    current_line.append(word)
+                    current_width += word_width + c.stringWidth(' ', 'NotoSansKannada', 12)  # Add space width
+                else:
+                    lines.append(' '.join(current_line))
+                    current_line = [word]
+                    current_width = word_width + c.stringWidth(' ', 'NotoSansKannada', 12)
+            if current_line:
+                lines.append(' '.join(current_line))
+
+            # Draw each line
             for line in lines:
-                if line.strip():
-                    c.drawString(100, y_position, line.strip())
-                    y_position -= 14  # Adjust line spacing
-                if y_position < 50:  # Prevent text from going off page
+                if y_position < 0.75 * inch:  # Stop if near bottom margin
                     break
+                c.drawString(left_margin, y_position, line)
+                y_position -= line_height
+
             c.save()
 
         # Clean up temporary input file
@@ -1609,7 +1636,7 @@ async def indic_custom_prompt_kannada_pdf(
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
+    
 # Add Timing Middleware
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
