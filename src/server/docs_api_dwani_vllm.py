@@ -32,6 +32,8 @@ from time import time
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
 import pdfplumber
 
 from reportlab.lib.pagesizes import A4
@@ -1144,6 +1146,164 @@ async def pdf_recreation_ocr_image(file: UploadFile = File(..., description="The
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+
+try:
+    pdfmetrics.registerFont(TTFont('NotoSansKannada', 'kannada/NotoSansKannada-Regular.ttf'))
+except Exception as e:
+    logger.error(f"Failed to register NotoSansKannada font: {str(e)}")
+    raise Exception("Kannada font 'NotoSansKannada-Regular.ttf' not found or invalid.")
+
+def generate_kannada_pdf_with_layout(text_segments: List[dict], output_path: str, page_width: float, page_height: float):
+    """
+    Generate a PDF with Kannada text placed at original coordinates using NotoSansKannada font.
+    
+    Args:
+        text_segments (List[dict]): List of dictionaries containing text and layout info.
+        output_path (str): Path to save the generated PDF.
+        page_width (float): Width of the PDF page in points.
+        page_height (float): Height of the PDF page in points.
+    """
+    try:
+        c = canvas.Canvas(output_path, pagesize=(page_width, page_height))
+        for segment in text_segments:
+            text = segment["text"]
+            x0 = segment["x0"]
+            y0 = page_height - segment["y1"]  # Flip y-coordinate (PDF origin is bottom-left)
+            fontsize = segment["size"] if segment["size"] else 12  # Default to 12 if size is missing
+            c.setFont('NotoSansKannada', fontsize)
+            c.drawString(x0, y0, text)
+        c.save()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kannada PDF generation failed: {str(e)}")
+
+@app.post(
+    "/pdf-recreation/kannada-pdf/",
+    tags=["pdf-recreation"],
+    summary="Extract, translate to Kannada, and generate a PDF with Kannada font",
+    description=(
+        "Extracts text from a specified PDF page, translates it to Kannada, and generates a PDF "
+        "using the NotoSansKannada font, preserving the original layout."
+    ),
+    response_description="A downloadable PDF file containing the translated Kannada text."
+)
+async def pdf_recreation_kannada_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(default=1, embed=True, description="Page number to extract (1-based).", ge=1, example=1),
+    src_lang: str = Body(default="eng_Latn", embed=True, description="Source language code.", example="eng_Latn")
+):
+    """
+    Extract text from a PDF page, translate to Kannada, and generate a PDF with Kannada font.
+    
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract (1-based indexing). Defaults to 1.
+        src_lang (str): Source language code (e.g., 'eng_Latn'). Defaults to English.
+    
+    Returns:
+        FileResponse: A downloadable PDF file with the translated Kannada text.
+    
+    Raises:
+        HTTPException: If the file is not a PDF, page number is invalid, language code is invalid,
+                       or processing/translation fails.
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        
+        # Validate source language
+        if src_lang not in language_options:
+            raise HTTPException(status_code=400, detail=f"Invalid source language. Choose from: {', '.join(language_options)}")
+        
+        # Target language is fixed to Kannada
+        tgt_lang = "kan_Knda"
+        
+        # Save PDF to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+        
+        # Extract text and layout with pdfplumber
+        text_segments = extract_text_with_layout(temp_file_path, page_number)
+        if not text_segments:
+            # Fallback to OCR for scanned PDFs
+            try:
+                image_base64 = render_pdf_to_base64png(temp_file_path, page_number, target_longest_image_dim=512)
+                page_content = ocr_page_with_rolm(image_base64)
+                text_segments = [{
+                    "text": page_content,
+                    "x0": 50,
+                    "y0": 50,
+                    "x1": 550,
+                    "y1": 750,
+                    "fontname": "NotoSansKannada",
+                    "size": 12
+                }]
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+        
+        # Translate text segments to Kannada
+        translated_segments = []
+        for segment in text_segments:
+            try:
+                translation_payload = {
+                    "sentences": [segment["text"]],
+                    "src_lang": src_lang,
+                    "tgt_lang": tgt_lang
+                }
+                translation_response = requests.post(
+                    translation_api_url,
+                    json=translation_payload,
+                    headers={"accept": "application/json", "Content-Type": "application/json"}
+                )
+                translation_response.raise_for_status()
+                translated_text = translation_response.json()["translations"][0]
+                translated_segments.append({
+                    "text": translated_text,
+                    "x0": segment["x0"],
+                    "y0": segment["y0"],
+                    "x1": segment["x1"],
+                    "y1": segment["y1"],
+                    "fontname": "NotoSansKannada",
+                    "size": segment["size"] if segment["size"] else 12
+                })
+            except requests.exceptions.RequestException as e:
+                raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+        
+        # Get page dimensions
+        with pdfplumber.open(temp_file_path) as pdf:
+            page = pdf.pages[page_number - 1]
+            page_width, page_height = page.width, page.height
+        
+        # Generate PDF with translated Kannada text
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            output_pdf_path = temp_pdf.name
+            generate_kannada_pdf_with_layout(translated_segments, output_pdf_path, page_width, page_height)
+        
+        # Clean up temporary input file
+        os.remove(temp_file_path)
+        
+        return FileResponse(
+            path=output_pdf_path,
+            filename=f"kannada_text_page_{page_number}.pdf",
+            media_type="application/pdf",
+            background=lambda: os.remove(output_pdf_path)
+        )
+    
+    except Exception as e:
+        # Clean up temporary files in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        if 'output_pdf_path' in locals():
+            try:
+                os.remove(output_pdf_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 
 # Add Timing Middleware
