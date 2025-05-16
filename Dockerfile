@@ -29,4 +29,4 @@ USER appuser
 EXPOSE 7860
 
 # Use absolute path for clarity
-CMD ["python", "/app/src/server/docs_api.py", "--host", "0.0.0.0", "--port", "7860", "--device", "cuda"]
+CMD ["python", "/app/src/server/docs_api_gh_200.py", "--host", "0.0.0.0", "--port", "7860", "--device", "cuda"]
