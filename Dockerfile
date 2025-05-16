@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.6.0-cudnn-devel-ubuntu22.04
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     sudo \
     wget libvips\
-    poppler-utils ttf-mscorefonts-installer msttcorefonts fonts-crosextra-caladea fonts-crosextra-carlito gsfonts lcdf-typetools \
+    poppler-utils fonts-crosextra-caladea fonts-crosextra-carlito gsfonts lcdf-typetools \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
-
+#ttf-mscorefonts-installer msttcorefonts 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -29,4 +29,4 @@ USER appuser
 EXPOSE 7860
 
 # Use absolute path for clarity
-CMD ["python", "/app/src/server/docs_api_gh_200.py", "--host", "0.0.0.0", "--port", "7860", "--device", "cuda"]
+CMD ["python", "/app/src/server/docs_api_gh_200.py", "--host", "0.0.0.0", "--port", "7860"]
