@@ -32,6 +32,8 @@ from time import time
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
 import pdfplumber
 
 from reportlab.lib.pagesizes import A4
@@ -1106,6 +1108,20 @@ def generate_pdf_from_text(text: str, output_path: str):
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
+async def cleanup_file(file_path: str):
+    """
+    Async function to clean up a file.
+    
+    Args:
+        file_path (str): Path to the file to be removed.
+    """
+    try:
+        os.remove(file_path)
+        logger.debug(f"Cleaned up file: {file_path}")
+    except Exception as e:
+        logger.warning(f"Failed to clean up file {file_path}: {str(e)}")
+
+
 @app.post(
     "/pdf-recreation/ocr",
     tags=["pdf-recreation"],
@@ -1146,6 +1162,481 @@ async def pdf_recreation_ocr_image(file: UploadFile = File(..., description="The
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 
+try:
+    pdfmetrics.registerFont(TTFont('NotoSansKannada', 'kannada/NotoSansKannada-Regular.ttf'))
+except Exception as e:
+    logger.error(f"Failed to register NotoSansKannada font: {str(e)}")
+    raise Exception("Kannada font 'NotoSansKannada-Regular.ttf' not found or invalid.")
+
+
+def generate_kannada_pdf_with_layout(text_segments: List[dict], output_path: str, page_width: float, page_height: float):
+    """
+    Generate a PDF with Kannada text placed at original coordinates using NotoSansKannada font.
+    
+    Args:
+        text_segments (List[dict]): List of dictionaries containing text and layout info.
+        output_path (str): Path to save the generated PDF.
+        page_width (float): Width of the PDF page in points.
+        page_height (float): Height of the PDF page in points.
+    """
+    try:
+        c = canvas.Canvas(output_path, pagesize=(page_width, page_height))
+        for segment in text_segments:
+            text = segment["text"]
+            x0 = segment["x0"]
+            y0 = page_height - segment["y1"]  # Flip y-coordinate (PDF origin is bottom-left)
+            fontsize = segment["size"] if segment["size"] else 12  # Default to 12 if size is missing
+            c.setFont('NotoSansKannada', fontsize)
+            c.drawString(x0, y0, text)
+        c.save()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kannada PDF generation failed: {str(e)}")
+    
+@app.post(
+    "/pdf-recreation/kannada-pdf/",
+    tags=["pdf-recreation"],
+    summary="Extract, translate to Kannada, and generate a PDF with Kannada font",
+    description=(
+        "Extracts text from a specified PDF page, translates it to Kannada, and generates a PDF "
+        "using the NotoSansKannada font, preserving the original layout."
+    ),
+    response_description="A downloadable PDF file containing the translated Kannada text."
+)
+async def pdf_recreation_kannada_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(default=1, embed=True, description="Page number to extract (1-based).", ge=1, example=1),
+    src_lang: str = Body(default="eng_Latn", embed=True, description="Source language code.", example="eng_Latn")
+):
+    """
+    Extract text from a PDF page, translate to Kannada, and generate a PDF with Kannada font.
+    
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract (1-based indexing). Defaults to 1.
+        src_lang (str): Source language code (e.g., 'eng_Latn'). Defaults to English.
+    
+    Returns:
+        FileResponse: A downloadable PDF file with the translated Kannada text.
+    
+    Raises:
+        HTTPException: If the file is not a PDF, page number is invalid, language code is invalid,
+                       or processing/translation fails.
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        
+        # Validate source language
+        if src_lang not in language_options:
+            raise HTTPException(status_code=400, detail=f"Invalid source language. Choose from: {', '.join(language_options)}")
+        
+        # Target language is fixed to Kannada
+        tgt_lang = "kan_Knda"
+        
+        # Save PDF to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+        
+        # Extract text and layout with pdfplumber
+        text_segments = extract_text_with_layout(temp_file_path, page_number)
+        if not text_segments:
+            # Fallback to OCR for scanned PDFs
+            try:
+                image_base64 = render_pdf_to_base64png(temp_file_path, page_number, target_longest_image_dim=512)
+                page_content = ocr_page_with_rolm(image_base64)
+                text_segments = [{
+                    "text": page_content,
+                    "x0": 50,
+                    "y0": 50,
+                    "x1": 550,
+                    "y1": 750,
+                    "fontname": "NotoSansKannada",
+                    "size": 12
+                }]
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+        
+        # Translate text segments to Kannada
+        translated_segments = []
+        for segment in text_segments:
+            try:
+                translation_payload = {
+                    "sentences": [segment["text"]],
+                    "src_lang": src_lang,
+                    "tgt_lang": tgt_lang
+                }
+                translation_response = requests.post(
+                    translation_api_url,
+                    json=translation_payload,
+                    headers={"accept": "application/json", "Content-Type": "application/json"}
+                )
+                translation_response.raise_for_status()
+                translated_text = translation_response.json()["translations"][0]
+                translated_segments.append({
+                    "text": translated_text,
+                    "x0": segment["x0"],
+                    "y0": segment["y0"],
+                    "x1": segment["x1"],
+                    "y1": segment["y1"],
+                    "fontname": "NotoSansKannada",
+                    "size": segment["size"] if segment["size"] else 12
+                })
+            except requests.exceptions.RequestException as e:
+                raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+        
+        # Get page dimensions
+        with pdfplumber.open(temp_file_path) as pdf:
+            page = pdf.pages[page_number - 1]
+            page_width, page_height = page.width, page.height
+        
+        # Generate PDF with translated Kannada text
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            output_pdf_path = temp_pdf.name
+            generate_kannada_pdf_with_layout(translated_segments, output_pdf_path, page_width, page_height)
+        
+        # Clean up temporary input file
+        os.remove(temp_file_path)
+        
+        return FileResponse(
+            path=output_pdf_path,
+            filename=f"kannada_text_page_{page_number}.pdf",
+            media_type="application/pdf",
+            background=lambda: os.remove(output_pdf_path)
+        )
+    
+    except Exception as e:
+        # Clean up temporary files in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        if 'output_pdf_path' in locals():
+            try:
+                os.remove(output_pdf_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+@app.post(
+    "/indic-extract-kannada-pdf/",
+    tags=["pdf-recreation"],
+    summary="Extract text from a PDF page, translate to Kannada, and generate a PDF with Kannada font",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR, translates it to Kannada, "
+        "and generates a PDF with the translated text using the NotoSansKannada font."
+    ),
+    response_description="A downloadable PDF file containing the translated Kannada text."
+)
+async def indic_extract_kannada_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description="The page number to extract text from (1-based indexing).",
+        ge=1,
+        example=1
+    ),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language for translation (e.g., 'eng_Latn' for English).",
+        example="eng_Latn"
+    )
+):
+    """
+    Extract text from a PDF page, translate to Kannada, and generate a PDF with Kannada font.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract text from (1-based indexing). Defaults to 1.
+        src_lang (str): Source language for translation (e.g., 'eng_Latn'). Defaults to English.
+
+    Returns:
+        FileResponse: A downloadable PDF file with the translated Kannada text.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, the source language is invalid,
+                       or processing/translation fails.
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Validate source language
+        if src_lang not in language_options:
+            raise HTTPException(status_code=400, detail=f"Invalid source language. Choose from: {', '.join(language_options)}")
+
+        # Target language is fixed to Kannada
+        tgt_lang = "kan_Knda"
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Render the specified page to an image
+        try:
+            image_base64 = render_pdf_to_base64png(
+                temp_file_path, page_number, target_longest_image_dim=1024
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
+
+        # Perform OCR using RolmOCR
+        try:
+            page_content = ocr_page_with_rolm(image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+
+        # Translate the extracted text to Kannada
+        try:
+            translation_payload = {
+                "sentences": [page_content],
+                "src_lang": src_lang,
+                "tgt_lang": tgt_lang
+            }
+            translation_response = requests.post(
+                translation_api_url,
+                json=translation_payload,
+                headers={"accept": "application/json", "Content-Type": "application/json"}
+            )
+            translation_response.raise_for_status()
+            translation_result = translation_response.json()
+            translated_content = translation_result["translations"][0]
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Error querying translation API: {str(e)}")
+
+        # Generate PDF with translated Kannada text
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            output_pdf_path = temp_pdf.name
+            w, h = A4
+            c = canvas.Canvas(output_pdf_path, pagesize=A4)
+            c.setFont('NotoSansKannada', 12)  # Use NotoSansKannada font
+            # Simple layout: draw text at a fixed position
+            lines = translated_content.split('\n')
+            y_position = h - 100
+            for line in lines:
+                if line.strip():
+                    c.drawString(100, y_position, line.strip())
+                    y_position -= 14  # Adjust line spacing
+                if y_position < 50:  # Prevent text from going off page
+                    break
+            c.save()
+
+        # Clean up temporary input file
+        os.remove(temp_file_path)
+
+        return FileResponse(
+            path=output_pdf_path,
+            filename=f"kannada_extracted_page_{page_number}.pdf",
+            media_type="application/pdf",
+            background=lambda: os.remove(output_pdf_path)
+        )
+
+    except Exception as e:
+        # Clean up temporary files in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        if 'output_pdf_path' in locals():
+            try:
+                os.remove(output_pdf_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@app.post(
+    "/indic-custom-prompt-kannada-pdf/",
+    tags=["pdf-recreation"],
+    summary="Extract text, process with custom prompt, translate to Kannada, and generate a PDF with Kannada font",
+    description=(
+        "Extracts text from a specified page of a PDF file using RolmOCR, processes it with a user-provided custom prompt, "
+        "translates the response to Kannada, and generates a PDF with the translated text using the NotoSansKannada font, "
+        "with proper line breaks for readability."
+    ),
+    response_description="A downloadable PDF file containing the translated Kannada response from the custom prompt."
+)
+async def indic_custom_prompt_kannada_pdf(
+    file: UploadFile = File(..., description="The PDF file to process. Must be a valid PDF."),
+    page_number: int = Body(
+        default=1,
+        embed=True,
+        description="The page number to extract and process (1-based indexing).",
+        ge=1,
+        example=1
+    ),
+    prompt: str = Body(
+        ...,
+        embed=True,
+        description="The custom prompt to process the extracted text (e.g., 'Summarize in 2 sentences' or 'List key points').",
+        example="Summarize the text in 2 sentences."
+    ),
+    src_lang: str = Body(
+        default="eng_Latn",
+        embed=True,
+        description="Source language for translation (e.g., 'eng_Latn' for English).",
+        example="eng_Latn"
+    )
+):
+    """
+    Extract text from a PDF page, process with a custom prompt, translate to Kannada, and generate a PDF with Kannada font.
+
+    Args:
+        file (UploadFile): The PDF file to process.
+        page_number (int): The page number to extract and process (1-based indexing). Defaults to 1.
+        prompt (str): The custom prompt to process the extracted text.
+        src_lang (str): Source language for translation (e.g., 'eng_Latn'). Defaults to English.
+
+    Returns:
+        FileResponse: A downloadable PDF file with the translated Kannada response, properly formatted with line breaks.
+
+    Raises:
+        HTTPException: If the file is not a PDF, the page number is invalid, the prompt is empty,
+                       the source language is invalid, or processing/translation fails.
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+        # Validate prompt
+        if not prompt.strip():
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
+        # Validate source language
+        if src_lang not in language_options:
+            raise HTTPException(status_code=400, detail=f"Invalid source language. Choose from: {', '.join(language_options)}")
+
+        # Target language is fixed to Kannada
+        tgt_lang = "kan_Knda"
+
+        # Save the uploaded PDF to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = temp_file.name
+
+        # Render the specified page to an image
+        try:
+            image_base64 = render_pdf_to_base64png(
+                temp_file_path, page_number, target_longest_image_dim=1024
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
+
+        # Perform OCR using RolmOCR
+        try:
+            page_content = ocr_page_with_rolm(image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+
+        # Process text with custom prompt using OpenAI chat completion
+        try:
+            custom_response = openai_client.chat.completions.create(
+                model=rolm_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"{prompt}\n\n{page_content}"
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            response = custom_response.choices[0].message.content
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Custom prompt processing failed: {str(e)}")
+
+        # Translate the response to Kannada
+        try:
+            translation_payload = {
+                "sentences": [response],
+                "src_lang": src_lang,
+                "tgt_lang": tgt_lang
+            }
+            translation_response = requests.post(
+                translation_api_url,
+                json=translation_payload,
+                headers={"accept": "application/json", "Content-Type": "application/json"}
+            )
+            translation_response.raise_for_status()
+            translation_result = translation_response.json()
+            translated_response = translation_result["translations"][0]
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Error querying translation API: {str(e)}")
+
+        # Generate PDF with translated Kannada response, with proper line breaks
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            output_pdf_path = temp_pdf.name
+            w, h = A4
+            c = canvas.Canvas(output_pdf_path, pagesize=A4)
+            c.setFont('NotoSansKannada', 12)  # Use NotoSansKannada font
+
+            # Define margins and text area
+            left_margin = 1 * inch
+            right_margin = 1 * inch
+            max_width = w - left_margin - right_margin
+            line_height = 14  # Line spacing in points
+            y_position = h - 1 * inch  # Start 1 inch from top
+
+            # Simple text wrapping: split into words and build lines
+            words = translated_response.split()
+            current_line = []
+            current_width = 0
+            lines = []
+
+            for word in words:
+                # Estimate word width (approximate, as exact width depends on font metrics)
+                word_width = c.stringWidth(word, 'NotoSansKannada', 12)
+                if current_width + word_width <= max_width:
+                    current_line.append(word)
+                    current_width += word_width + c.stringWidth(' ', 'NotoSansKannada', 12)  # Add space width
+                else:
+                    lines.append(' '.join(current_line))
+                    current_line = [word]
+                    current_width = word_width + c.stringWidth(' ', 'NotoSansKannada', 12)
+            if current_line:
+                lines.append(' '.join(current_line))
+
+            # Draw each line
+            for line in lines:
+                if y_position < 0.75 * inch:  # Stop if near bottom margin
+                    break
+                c.drawString(left_margin, y_position, line)
+                y_position -= line_height
+
+            c.save()
+
+        # Clean up temporary input file
+        os.remove(temp_file_path)
+
+        return FileResponse(
+            path=output_pdf_path,
+            filename=f"kannada_custom_prompt_page_{page_number}.pdf",
+            media_type="application/pdf",
+            background=lambda: os.remove(output_pdf_path)
+        )
+
+    except Exception as e:
+        # Clean up temporary files in case of error
+        if 'temp_file_path' in locals():
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        if 'output_pdf_path' in locals():
+            try:
+                os.remove(output_pdf_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    
 # Add Timing Middleware
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
