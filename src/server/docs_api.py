@@ -293,7 +293,7 @@ async def indic_custom_prompt_pdf(
             "tgt_lang": target_language
         }
         translation_response = requests.post(
-            translation_api_url,
+            f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={target_language}",
             json=translation_payload,
             headers={"accept": "application/json", "Content-Type": "application/json"}
         )
@@ -347,7 +347,7 @@ async def indic_summarize_pdf(
             "tgt_lang": tgt_lang
         }
         translation_response = requests.post(
-            translation_api_url,
+            f"{translation_api_url}/translate?src_lang={src_lang}&tgt_lang={tgt_lang}",
             json=translation_payload,
             headers={"accept": "application/json", "Content-Type": "application/json"}
         )
@@ -400,7 +400,7 @@ async def indic_extract_text_from_pdf(
                 "tgt_lang": tgt_lang
             }
             translation_response = requests.post(
-                translation_api_url,
+                f"{translation_api_url}/translate?src_lang={src_lang}&tgt_lang={tgt_lang}",
                 json=translation_payload,
                 headers={"accept": "application/json", "Content-Type": "application/json"}
             )
@@ -570,7 +570,7 @@ async def pdf_recreation_indic_extract_text(
                     "tgt_lang": tgt_lang
                 }
                 translation_response = requests.post(
-                    translation_api_url,
+                    f"{translation_api_url}/translate?src_lang={src_lang}&tgt_lang={tgt_lang}",
                     json=translation_payload,
                     headers={"accept": "application/json", "Content-Type": "application/json"}
                 )
@@ -704,7 +704,7 @@ async def indic_visual_query(
             "tgt_lang": target_language
         }
         translation_response = requests.post(
-            translation_api_url,
+            f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={target_language}",
             json=translation_payload,
             headers={"accept": "application/json", "Content-Type": "application/json"}
         )
@@ -771,7 +771,7 @@ async def indic_chat(
                 "tgt_lang": "eng_Latn"
             }
             translation_response = requests.post(
-                translation_api_url,
+                f"{translation_api_url}/translate?src_lang={chat_request.src_lang}&tgt_lang=eng_Latn",
                 json=translation_payload,
                 headers={"accept": "application/json", "Content-Type": "application/json"}
             )
@@ -805,7 +805,7 @@ async def indic_chat(
                 "tgt_lang": chat_request.tgt_lang
             }
             translation_response = requests.post(
-                translation_api_url,
+                f"{translation_api_url}/translate?src_lang=eng_Latn&tgt_lang={chat_request.tgt_lang}",
                 json=translation_payload,
                 headers={"accept": "application/json", "Content-Type": "application/json"}
             )
