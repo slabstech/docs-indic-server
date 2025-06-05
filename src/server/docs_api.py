@@ -117,7 +117,10 @@ def ocr_page_with_rolm(img_base64: str, model: str) -> str:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image_url", "image_url": f"data:image/png;base64,{img_base64}"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_base64}"}
+                        },
                         {"type": "text", "text": "Return the plain text extracted from this image."}
                     ]
                 }
@@ -128,6 +131,7 @@ def ocr_page_with_rolm(img_base64: str, model: str) -> str:
         return response.choices[0].message.content
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+    
 
 @app.get("/")
 async def root():
