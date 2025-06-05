@@ -41,7 +41,7 @@ app = FastAPI(
 )
 
 # Translation API URL
-translation_api_url = "http://0.0.0.0:7862/v1/translate"
+translation_api_url = "http://0.0.0.0:7862/translate"
 
 # Supported language codes
 language_options = [
