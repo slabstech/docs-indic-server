@@ -14,7 +14,7 @@ blake3==1.0.4
 bleach==6.2.0
 boto3==1.37.36
 botocore==1.37.36
-cached_path @ git+https://github.com/slabstech/cached_path.git
+#cached_path @ git+https://github.com/slabstech/cached_path.git
 cachetools==5.5.2
 certifi==2025.1.31
 cffi==1.17.1
@@ -95,6 +95,7 @@ networkx==3.4.2
 ninja==1.11.1.4
 numba==0.61.2
 numpy==2.2.4
+num2words
 olmocr @ git+https://github.com/slabstech/olmocr.git@b8d9afd0244975d2d7cb226528ab46bd2cfd62c6
 openai==1.75.0
 opencv-python-headless==4.11.0.86
@@ -161,8 +162,6 @@ safetensors==0.5.3
 scipy==1.15.2
 sentencepiece==0.2.0
 setproctitle==1.3.5
-sgl-kernel==0.0.9.post1
-sglang==0.4.5.post1
 shellingham==1.5.4
 six==1.17.0
 smart-open==7.1.0
@@ -183,7 +182,6 @@ urllib3==2.4.0
 uv==0.6.14
 uvicorn==0.34.1
 uvloop==0.21.0
-vllm==0.8.4
 watchfiles==1.0.5
 wcwidth==0.2.13
 webencodings==0.5.1
