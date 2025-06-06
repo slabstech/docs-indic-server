@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request, Depends, Form
 from fastapi.responses import JSONResponse, FileResponse
 from openai import OpenAI
 import base64
