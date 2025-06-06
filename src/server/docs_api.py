@@ -101,6 +101,7 @@ def get_openai_client(model: str) -> OpenAI:
         "deepseek-r1": "7885"
     }
     base_url = f"http://0.0.0.0:{model_ports[model]}/v1"
+    print(base_url)
     return OpenAI(api_key="http", base_url=base_url)
 
 def encode_image(image: BytesIO) -> str:
@@ -681,6 +682,7 @@ async def indic_visual_query(
         img_base64 = encode_image(image)
         extracted_text = ocr_page_with_rolm(img_base64, model)
 
+        print(model)
         response = None
         text_to_translate = extracted_text
         if prompt and prompt.strip():
