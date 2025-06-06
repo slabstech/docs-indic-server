@@ -52,6 +52,9 @@ language_options = [
     "tel_Telu",  # Telugu
 ]
 
+SUPPORTED_MODELS = ["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"]
+
+
 # Pydantic models
 class ExtractTextRequest(BaseModel):
     page_number: int = Field(default=1, description="The page number to extract text from (1-based indexing).", ge=1, example=1)
@@ -85,13 +88,12 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str = Field(..., description="The generated or translated response.")
 
-# Dynamic LLM client based on model
+# Dynamic LLM client
 def get_openai_client(model: str) -> OpenAI:
     """Initialize OpenAI client with model-specific base URL."""
-    valid_models = ["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"]
-    if model not in valid_models:
-        raise ValueError(f"Invalid model: {model}. Choose from: {', '.join(valid_models)}")
-    
+    if model not in SUPPORTED_MODELS:
+        raise HTTPException(status_code=400, detail=f"Invalid model: {model}. Supported models: {', '.join(SUPPORTED_MODELS)}")
+
     model_ports = {
         "qwen3": "7880",
         "gemma3": "7881",
@@ -100,9 +102,10 @@ def get_openai_client(model: str) -> OpenAI:
         "sarvam-m": "7884",
         "deepseek-r1": "7885"
     }
-    base_url = f"http://0.0.0.0:{model_ports[model]}/v1"
-    print(base_url)
+    base_url = f"http://localhost:{model_ports[model]}/v1"
+    logger.debug(f"Initializing OpenAI client for model {model} with base_url: {base_url}")
     return OpenAI(api_key="http", base_url=base_url)
+
 
 def encode_image(image: BytesIO) -> str:
     """Encode image bytes to base64 string."""
@@ -138,22 +141,33 @@ def ocr_page_with_rolm(img_base64: str, model: str) -> str:
 async def root():
     return {"message": "Combined API is running."}
 
-@app.post("/extract-text/")
+@app.post("/extract-text/",
+          summary="Extract Text from PDF",
+          description="Extract text from a specified PDF page using OCR.",
+          tags=["PDF"],
+          responses={
+              200: {"description": "Extracted text"},
+              400: {"description": "Invalid PDF or page number"},
+              500: {"description": "OCR error"}
+          })
 async def extract_text_from_pdf(
+    request: Request,
     file: UploadFile = File(...),
-    page_number: int = Body(1, embed=True, ge=1),
-    model: str = Body("gemma3", embed=True)
+    page_number: int = Form(1, description="Page number to extract text from (1-based indexing)", ge=1),
+    model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
+
+    logger.debug(f"Processing extract text: page_number={page_number}, model={model}")
+
     try:
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files supported.")
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(await file.read())
             temp_file_path = temp_file.name
 
         try:
-            image_base64 = render_pdf_to_base64png(temp_file_path, page_number, target_longest_image_dim=1024)
+            image_base64 = render_pdf_to_base64png(temp_file_path, page_number, target_page_number=page_number)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to render PDF page: {str(e)}")
 
@@ -170,6 +184,7 @@ async def extract_text_from_pdf(
             os.remove(temp_file_path)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+
 @app.post("/ocr")
 async def ocr_image(file: UploadFile = File(...)):
     if not file.content_type.startswith("image/png"):
@@ -184,20 +199,30 @@ async def ocr_image(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
-@app.post("/summarize-pdf")
+# Summarize PDF Endpoint
+@app.post("/summarize-pdf",
+          summary="Summarize a PDF Page",
+          description="Summarize the content of a specific PDF page.",
+          tags=["PDF"],
+          responses={
+              200: {"description": "Extracted text and summary"},
+              400: {"description": "Invalid PDF or page number"},
+              500: {"description": "OCR or summarization error"}
+          })
 async def summarize_pdf(
+    request: Request,
     file: UploadFile = File(...),
-    page_number: int = Body(1, embed=True, ge=1),
-    model: str = Body("gemma3", embed=True)
+    page_number: int = Form(1, description="Page number to summarize (1-based indexing)", ge=1),
+    model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
-    try:
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files supported.")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
 
+    logger.debug(f"Processing summarize PDF: page_number={page_number}, model={model}")
+
+    try:
         text_response = await extract_text_from_pdf(file, page_number, model)
-        extracted_text = text_response.body.decode("utf-8")
-        extracted_json = json.loads(extracted_text)
-        extracted_text = extracted_json["page_content"]
+        extracted_text = json.loads(text_response.body.decode("utf-8"))["page_content"]
 
         client = get_openai_client(model)
         summary_response = client.chat.completions.create(
@@ -217,25 +242,36 @@ async def summarize_pdf(
         })
 
     except Exception as e:
+        logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-@app.post("/custom-prompt-pdf")
+# Custom Prompt PDF Endpoint
+@app.post("/custom-prompt-pdf",
+          summary="Process a PDF with a Custom Prompt",
+          description="Extract text from a PDF page and process it with a custom prompt.",
+          tags=["PDF"],
+          responses={
+              200: {"description": "Extracted text and custom response"},
+              400: {"description": "Invalid PDF, page number, or prompt"},
+              500: {"description": "OCR or processing error"}
+          })
 async def custom_prompt_pdf(
+    request: Request,
     file: UploadFile = File(...),
-    page_number: int = Body(1, embed=True, ge=1),
-    prompt: str = Body(..., embed=True),
-    model: str = Body("gemma3", embed=True)
+    page_number: int = Form(1, description="Page number to process", ge=1),
+    prompt: str = Form(..., description="Custom prompt to process"),
+    model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
-    try:
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files supported.")
-        if not prompt.strip():
-            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
+    if not prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
+    logger.debug(f"Processing custom prompt PDF: page_number={page_number}, model={model}")
+
+    try:
         text_response = await extract_text_from_pdf(file, page_number, model)
-        extracted_text = text_response.body.decode("utf-8")
-        extracted_json = json.loads(extracted_text)
-        extracted_text = extracted_json["page_content"]
+        extracted_text = json.loads(text_response.body.decode("utf-8"))["page_content"]
 
         client = get_openai_client(model)
         custom_response = client.chat.completions.create(
@@ -255,8 +291,9 @@ async def custom_prompt_pdf(
         })
 
     except Exception as e:
+        logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
+    
 @app.post("/indic-custom-prompt-pdf")
 async def indic_custom_prompt_pdf(
     file: UploadFile = File(...),
@@ -318,22 +355,34 @@ async def indic_custom_prompt_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-@app.post("/indic-summarize-pdf")
+# Indic Summarize PDF Endpoint
+@app.post("/indic-summarize-pdf",
+          summary="Summarize and Translate a PDF Page",
+          description="Summarize a PDF page and translate the summary into the target language.",
+          tags=["PDF"],
+          responses={
+              200: {"description": "Extracted text, summary, and translated summary"},
+              400: {"description": "Invalid PDF, page number, or language codes"},
+              500: {"description": "OCR, summarization, or translation error"}
+          })
 async def indic_summarize_pdf(
+    request: Request,
     file: UploadFile = File(...),
-    page_number: int = Body(1, embed=True, ge=1),
-    src_lang: str = Body("eng_Latn", embed=True),
-    tgt_lang: str = Body("kan_Knda", embed=True),
-    model: str = Body("gemma3", embed=True)
+    page_number: int = Form(1, description="Page number to summarize", ge=1),
+    src_lang: str = Form("eng_Latn", description="Source language code"),
+    tgt_lang: str = Form("kan_Knda", description="Target language code"),
+    model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
-    try:
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files supported.")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
+    if src_lang not in language_options or tgt_lang not in language_options:
+        raise HTTPException(status_code=400, detail=f"Invalid language codes: {src_lang}, {tgt_lang}")
 
+    logger.debug(f"Processing indic summarize PDF: page_number={page_number}, model={model}")
+
+    try:
         text_response = await extract_text_from_pdf(file, page_number, model)
-        extracted_text = text_response.body.decode("utf-8")
-        extracted_json = json.loads(extracted_text)
-        extracted_text = extracted_json["page_content"]
+        extracted_text = json.loads(text_response.body.decode("utf-8"))["page_content"]
 
         client = get_openai_client(model)
         summary_response = client.chat.completions.create(
@@ -367,10 +416,13 @@ async def indic_summarize_pdf(
             "processed_page": page_number
         })
 
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
+    except requests.RequestException as e:
+        logger.error(f"Translation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     except Exception as e:
+        logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+                            
 
 @app.post("/indic-extract-text/")
 async def indic_extract_text_from_pdf(
@@ -661,10 +713,10 @@ async def pdf_recreation_ocr_image(
             os.remove(output_pdf_path)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-# Updated Visual Query Endpoint
+# Indic Visual Query Endpoint
 @app.post("/indic-visual-query/",
           summary="Indic Visual Query with Image",
-          description="Extract text from a PNG image using OCR, optionally process it with a custom prompt, and translate the result into the target language.",
+          description="Extract text from a PNG image using OCR, optionally process it with a custom prompt, and translate the result.",
           tags=["Chat"],
           responses={
               200: {"description": "Extracted text and translated response"},
@@ -673,22 +725,20 @@ async def pdf_recreation_ocr_image(
           })
 async def indic_visual_query(
     request: Request,
-    file: UploadFile = File(..., description="PNG image file to analyze"),
+    file: UploadFile = File(...),
     prompt: Optional[str] = Form(None, description="Optional custom prompt to process the extracted text"),
-    source_language: str = Form("eng_Latn", description="Source language code (e.g., eng_Latn, kan_Knda)"),
-    target_language: str = Form("kan_Knda", description="Target language code (e.g., eng_Latn, kan_Knda)"),
-    model: str = Form("gemma3", description="LLM model", enum=["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"])
+    source_language: str = Form("eng_Latn", description="Source language code"),
+    tgt_language: str = Form("kan_Knda", description="Target language code"),
+    model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
+    if not file.content_type.startswith("image/png"):
+        raise HTTPException(status_code=400, detail="Only PNG images supported")
+    if source_language not in language_options or tgt_language not in language_options:
+        raise HTTPException(status_code=400, detail=f"Invalid language codes: {source_language}, {tgt_language}")
+
+    logger.debug(f"Processing indic visual query: model={model}, source_language={source_language}, tgt_language={tgt_language}")
+
     try:
-        if not file.content_type.startswith("image/png"):
-            raise HTTPException(status_code=400, detail="Only PNG images supported")
-        if source_language not in language_options:
-            raise HTTPException(status_code=400, detail=f"Invalid source language: {source_language}")
-        if target_language not in language_options:
-            raise HTTPException(status_code=400, detail=f"Invalid target language: {target_language}")
-
-        logger.debug(f"Processing indic visual query: model={model}, source_language={source_language}, target_language={target_language}, prompt={prompt[:50] if prompt else None}")
-
         image_bytes = await file.read()
         image = BytesIO(image_bytes)
         img_base64 = encode_image(image)
@@ -713,15 +763,15 @@ async def indic_visual_query(
             response = custom_response.choices[0].message.content
             text_to_translate = response
         elif prompt and not prompt.strip():
-            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
         translation_payload = {
             "sentences": [text_to_translate],
             "src_lang": source_language,
-            "tgt_lang": target_language
+            "tgt_lang": tgt_language
         }
         translation_response = requests.post(
-            f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={target_language}",
+            f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={tgt_language}",
             json=translation_payload,
             headers={"accept": "application/json", "Content-Type": "application/json"}
         )
@@ -736,14 +786,14 @@ async def indic_visual_query(
         if response:
             result["response"] = response
 
-        logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, translated_response_length={len(translated_response)}")
+        logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}")
         return JSONResponse(content=result)
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error translating: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
+    except requests.RequestException as e:
+        logger.error(f"Translation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 class Settings:
