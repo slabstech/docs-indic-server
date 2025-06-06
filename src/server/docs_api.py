@@ -52,7 +52,9 @@ language_options = [
     "tel_Telu",  # Telugu
 ]
 
+# Supported models and languages
 SUPPORTED_MODELS = ["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"]
+language_options = ["kan_Knda", "eng_Latn", "hin_Deva", "tam_Taml", "tel_Telu"]
 
 
 # Pydantic models
@@ -294,29 +296,36 @@ async def custom_prompt_pdf(
         logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
     
-@app.post("/indic-custom-prompt-pdf")
+@app.post("/indic-custom-prompt-pdf",
+          summary="Process a PDF with Custom Prompt and Translation",
+          description="Extract text from a PDF page, process it with a custom prompt, and translate the response.",
+          tags=["PDF"],
+          responses={
+              200: {"description": "Extracted text, custom response, and translated response"},
+              400: {"description": "Invalid PDF, page number, prompt, or language codes"},
+              500: {"description": "OCR, processing, or translation error"}
+          })
 async def indic_custom_prompt_pdf(
+    request: Request,
     file: UploadFile = File(...),
-    page_number: int = Body(1, embed=True, ge=1),
-    prompt: str = Body(..., embed=True),
-    source_language: str = Body("eng_Latn", embed=True),
-    target_language: str = Body("kan_Knda", embed=True),
-    model: str = Body("gemma3", embed=True)
+    page_number: int = Form(1, description="Page number to process", ge=1),
+    prompt: str = Form(..., description="Custom prompt to process"),
+    src_lang: str = Form("eng_Latn", description="Source language code"),  # Default added
+    tgt_lang: str = Form("kan_Knda", description="Target language code"),  # Default added
+    model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
-    try:
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files supported.")
-        if not prompt.strip():
-            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
-        if source_language not in language_options:
-            raise HTTPException(status_code=400, detail=f"Invalid source language: {source_language}")
-        if target_language not in language_options:
-            raise HTTPException(status_code=400, detail=f"Invalid target language: {target_language}")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
+    if not prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+    if src_lang not in language_options or tgt_lang not in language_options:
+        raise HTTPException(status_code=400, detail=f"Invalid language codes: src={src_lang}, tgt={tgt_lang}")
 
+    logger.debug(f"Processing indic custom prompt PDF: page_number={page_number}, model={model}, src_lang={src_lang}, tgt_lang={tgt_lang}")
+
+    try:
         text_response = await extract_text_from_pdf(file, page_number, model)
-        extracted_text = text_response.body.decode("utf-8")
-        extracted_json = json.loads(extracted_text)
-        extracted_text = extracted_json["page_content"]
+        extracted_text = json.loads(text_response.body.decode("utf-8"))["page_content"]
 
         client = get_openai_client(model)
         custom_response = client.chat.completions.create(
@@ -331,11 +340,11 @@ async def indic_custom_prompt_pdf(
 
         translation_payload = {
             "sentences": [response],
-            "src_lang": source_language,
-            "tgt_lang": target_language
+            "src_lang": src_lang,
+            "tgt_lang": tgt_lang
         }
         translation_response = requests.post(
-            f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={target_language}",
+            f"{translation_api_url}/translate?src_lang={src_lang}&tgt_lang={tgt_lang}",
             json=translation_payload,
             headers={"accept": "application/json", "Content-Type": "application/json"}
         )
@@ -343,6 +352,7 @@ async def indic_custom_prompt_pdf(
         translation_result = translation_response.json()
         translated_response = translation_result["translations"][0]
 
+        logger.debug(f"Indic custom prompt PDF completed: response_length={len(response)}")
         return JSONResponse(content={
             "original_text": extracted_text,
             "response": response,
@@ -350,12 +360,14 @@ async def indic_custom_prompt_pdf(
             "processed_page": page_number
         })
 
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
+    except requests.RequestException as e:
+        logger.error(f"Translation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     except Exception as e:
+        logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-# Indic Summarize PDF Endpoint
+# Indic Summarize PDF Endpoint (Updated)
 @app.post("/indic-summarize-pdf",
           summary="Summarize and Translate a PDF Page",
           description="Summarize a PDF page and translate the summary into the target language.",
@@ -369,16 +381,16 @@ async def indic_summarize_pdf(
     request: Request,
     file: UploadFile = File(...),
     page_number: int = Form(1, description="Page number to summarize", ge=1),
-    src_lang: str = Form("eng_Latn", description="Source language code"),
-    tgt_lang: str = Form("kan_Knda", description="Target language code"),
+    src_lang: str = Form("eng_Latn", description="Source language code"),  # Default added
+    tgt_lang: str = Form("kan_Knda", description="Target language code"),  # Default added
     model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files supported")
     if src_lang not in language_options or tgt_lang not in language_options:
-        raise HTTPException(status_code=400, detail=f"Invalid language codes: {src_lang}, {tgt_lang}")
+        raise HTTPException(status_code=400, detail=f"Invalid language codes: src={src_lang}, tgt={tgt_lang}")
 
-    logger.debug(f"Processing indic summarize PDF: page_number={page_number}, model={model}")
+    logger.debug(f"Processing indic summarize PDF: page_number={page_number}, model={model}, src_lang={src_lang}, tgt_lang={tgt_lang}")
 
     try:
         text_response = await extract_text_from_pdf(file, page_number, model)
@@ -409,6 +421,7 @@ async def indic_summarize_pdf(
         translation_result = translation_response.json()
         translated_summary = translation_result["translations"][0]
 
+        logger.debug(f"Indic summarize PDF completed: summary_length={len(summary)}")
         return JSONResponse(content={
             "original_text": extracted_text,
             "summary": summary,
@@ -422,7 +435,6 @@ async def indic_summarize_pdf(
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-                            
 
 @app.post("/indic-extract-text/")
 async def indic_extract_text_from_pdf(
