@@ -661,13 +661,23 @@ async def pdf_recreation_ocr_image(
             os.remove(output_pdf_path)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-@app.post("/indic-visual-query/")
+# Updated Visual Query Endpoint
+@app.post("/indic-visual-query/",
+          summary="Indic Visual Query with Image",
+          description="Extract text from a PNG image using OCR, optionally process it with a custom prompt, and translate the result into the target language.",
+          tags=["Chat"],
+          responses={
+              200: {"description": "Extracted text and translated response"},
+              400: {"description": "Invalid image, prompt, or language codes"},
+              500: {"description": "OCR or translation error"}
+          })
 async def indic_visual_query(
-    file: UploadFile = File(...),
-    prompt: Optional[str] = Body(None, embed=True),
-    source_language: str = Body("eng_Latn", embed=True),
-    target_language: str = Body("kan_Knda", embed=True),
-    model: str = Body("gemma3", embed=True)
+    request: Request,
+    file: UploadFile = File(..., description="PNG image file to analyze"),
+    prompt: Optional[str] = Form(None, description="Optional custom prompt to process the extracted text"),
+    source_language: str = Form("eng_Latn", description="Source language code (e.g., eng_Latn, kan_Knda)"),
+    target_language: str = Form("kan_Knda", description="Target language code (e.g., eng_Latn, kan_Knda)"),
+    model: str = Form("gemma3", description="LLM model", enum=["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"])
 ):
     try:
         if not file.content_type.startswith("image/png"):
@@ -677,12 +687,13 @@ async def indic_visual_query(
         if target_language not in language_options:
             raise HTTPException(status_code=400, detail=f"Invalid target language: {target_language}")
 
+        logger.debug(f"Processing indic visual query: model={model}, source_language={source_language}, target_language={target_language}, prompt={prompt[:50] if prompt else None}")
+
         image_bytes = await file.read()
         image = BytesIO(image_bytes)
         img_base64 = encode_image(image)
         extracted_text = ocr_page_with_rolm(img_base64, model)
 
-        print(model)
         response = None
         text_to_translate = extracted_text
         if prompt and prompt.strip():
@@ -725,11 +736,14 @@ async def indic_visual_query(
         if response:
             result["response"] = response
 
+        logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, translated_response_length={len(translated_response)}")
         return JSONResponse(content=result)
 
     except requests.exceptions.RequestException as e:
+        logger.error(f"Error translating: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
     except Exception as e:
+        logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 class Settings:
