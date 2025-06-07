@@ -397,7 +397,7 @@ async def indic_summarize_pdf(
     logger.info(f"Processing indic summarize PDF: page_number={page_number}, model={model}, src_lang={src_lang}, tgt_lang={tgt_lang}")
 
     try:
-        text_response = await extract_text_from_pdf(file, page_number, model)
+        text_response = await indic_extract_text_from_pdf(file, page_number, model)
         extracted_text = json.loads(text_response.body.decode("utf-8"))["page_content"]
 
         client = get_openai_client(model)
