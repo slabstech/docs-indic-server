@@ -380,11 +380,13 @@ async def indic_custom_prompt_pdf(
 async def indic_summarize_pdf(
     request: Request,
     file: UploadFile = File(...),
-    page_number: int = Form(1, description="Page number to summarize", ge=1),
+    page_number: int = Form(1, description="Page number to extract text from (1-based indexing)", ge=1),
     src_lang: str = Form("eng_Latn", description="Source language code"),  # Default added
     tgt_lang: str = Form("kan_Knda", description="Target language code"),  # Default added
     model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
+    logger.info(f"Processing indic summarize PDF: page_number={page_number}, model={model}, src_lang={src_lang}, tgt_lang={tgt_lang}  and file={file.filename}")
+
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files supported")
     if src_lang not in language_options or tgt_lang not in language_options:
