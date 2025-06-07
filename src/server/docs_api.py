@@ -390,7 +390,7 @@ async def indic_summarize_pdf(
     if src_lang not in language_options or tgt_lang not in language_options:
         raise HTTPException(status_code=400, detail=f"Invalid language codes: src={src_lang}, tgt={tgt_lang}")
 
-    logger.debug(f"Processing indic summarize PDF: page_number={page_number}, model={model}, src_lang={src_lang}, tgt_lang={tgt_lang}")
+    logger.info(f"Processing indic summarize PDF: page_number={page_number}, model={model}, src_lang={src_lang}, tgt_lang={tgt_lang}")
 
     try:
         text_response = await extract_text_from_pdf(file, page_number, model)
@@ -421,7 +421,7 @@ async def indic_summarize_pdf(
         translation_result = translation_response.json()
         translated_summary = translation_result["translations"][0]
 
-        logger.debug(f"Indic summarize PDF completed: summary_length={len(summary)}")
+        logger.info(f"Indic summarize PDF completed: summary_length={len(summary)}")
         return JSONResponse(content={
             "original_text": extracted_text,
             "summary": summary,
