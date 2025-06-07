@@ -158,6 +158,8 @@ async def extract_text_from_pdf(
     page_number: int = Form(1, description="Page number to extract text from (1-based indexing)", ge=1),
     model: str = Form(default="gemma3", description="LLM model", enum=SUPPORTED_MODELS)
 ):
+    logger.info(f"Processing extract text: page_number={page_number}, model={model} and file={file.filename}")
+    
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files supported")
 
