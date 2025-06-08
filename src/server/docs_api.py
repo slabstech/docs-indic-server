@@ -82,6 +82,11 @@ class ChatRequest(BaseModel):
     tgt_lang: str = Field(default="eng_Latn", description="Target language code.", enum=language_options)
     model: str = Field(default="gemma3", description="Model to use for chat.", enum=["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"], example="gemma3")
 
+class ChatDirectRequest(BaseModel):
+    prompt: str = Field(..., description="The input prompt for the chat.")
+    model: str = Field(default="gemma3", description="Model to use for chat.", enum=["gemma3", "moondream", "qwen2.5vl", "qwen3", "sarvam-m", "deepseek-r1"], example="gemma3")
+    system_prompt: str = Field(default="", description="System Prompt")
+ 
 class ChatResponse(BaseModel):
     response: str = Field(..., description="The generated or translated response.")
 
@@ -842,6 +847,47 @@ async def indic_chat(
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@app.post("/chat_direct")
+async def chat_direct(
+    request: Request,
+    chat_request: ChatDirectRequest,
+    settings=Depends(get_settings)
+):
+    if not chat_request.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+
+    logger.debug(f"Received prompt: {chat_request.prompt},  model: {chat_request.model}")
+
+    try:
+
+        prompt_to_process = chat_request.prompt
+
+        current_time = time_to_words()
+        client = get_openai_client(chat_request.model)
+        response = client.chat.completions.create(
+            model=chat_request.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": f"You are Dwani, a helpful assistant. Answer questions considering India as base country and Karnataka as base state. Provide a concise response in one sentence maximum. If the answer contains numerical digits, convert the digits into words. If user asks the time, then return answer as {current_time}"}]
+                },
+                {"role": "user", "content": [{"type": "text", "text": prompt_to_process}]}
+            ],
+            temperature=0.3,
+            max_tokens=settings.max_tokens
+        )
+        generated_response = response.choices[0].message.content
+        logger.debug(f"Generated response: {generated_response}")
+
+
+        return JSONResponse(content={"response": generated_response})
+
+    except Exception as e:
+        logger.error(f"Error processing request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
 
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
