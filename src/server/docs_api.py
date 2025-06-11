@@ -724,6 +724,8 @@ async def indic_visual_query(
 
         response = None
         text_to_translate = extracted_text
+
+        result = {}
         if prompt and prompt.strip():
             client = get_openai_client(model)
             custom_response = client.chat.completions.create(
@@ -762,8 +764,15 @@ async def indic_visual_query(
 
             result = {
                 "extracted_text": extracted_text,
-                "translated_response": translated_response
+                "translated_response": translated_response,
             }
+        else:
+            result = {
+                "extracted_text": response,
+                "translated_response": response,
+            }
+
+
         if response:
             result["response"] = response
 
