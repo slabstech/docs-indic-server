@@ -770,8 +770,7 @@ async def indic_visual_query(
                 result["response"] = response
 
             return JSONResponse(content=result)
-
-        else :
+        else:
 
             sentences = split_into_sentences(text_to_translate)
             translation_payload = {
@@ -794,19 +793,12 @@ async def indic_visual_query(
             }
             logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, translated_response_length={len(translated_response)}")
 
-        else:
-            result = {
-                "extracted_text": response,
-                "translated_response": response,
-            }
-            logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, response_length={len(response)}")
+            if response:
+                result["response"] = response
+
+            return JSONResponse(content=result)
 
 
-
-        if response:
-            result["response"] = response
-
-        return JSONResponse(content=result)
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Error translating: {str(e)}")
