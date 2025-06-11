@@ -930,7 +930,7 @@ async def indic_chat(
             )
             generated_response = response.choices[0].message.content
             logger.debug(f"Generated response: {generated_response}")
-            return JSONResponse(content={"response": final_response})
+            return JSONResponse(content={"response": generated_response})
 
         else :
             sentences = split_into_sentences(prompt_to_process)
