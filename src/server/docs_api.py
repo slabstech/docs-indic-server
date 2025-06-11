@@ -427,7 +427,12 @@ async def indic_extract_text_from_pdf(
             )
             translation_response.raise_for_status()
             translation_result = translation_response.json()
-            translated_content = translation_result["translations"][0]
+            print(translation_result)
+
+            combined_translation = " ".join(translation_result["translations"])
+            print(combined_translation)  # Output: Hello Bonjour Hola
+
+            translated_content = combined_translation
         except requests.exceptions.RequestException as e:
             raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
 
