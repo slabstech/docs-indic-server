@@ -912,23 +912,26 @@ async def indic_chat(
 
         prompt_to_process = chat_request.prompt
 
-        sentences = split_into_sentences(prompt_to_process)
-        if chat_request.src_lang != "eng_Latn" or chat_request.src_lang != "deu_Latn":
-            translation_payload = {
-                "sentences": sentences,
-                "src_lang": chat_request.src_lang,
-                "tgt_lang": "eng_Latn"
-            }
-            translation_response = requests.post(
-                f"{translation_api_url}/translate?src_lang={chat_request.src_lang}&tgt_lang=eng_Latn",
-                json=translation_payload,
-                headers={"accept": "application/json", "Content-Type": "application/json"}
-            )
-            translation_response.raise_for_status()
-            translation_result = translation_response.json()
-            prompt_to_process = " ".join(translation_result["translations"])
+        if chat_request.src_lang == 'eng_Latn' and chat_request.tgt_lang == 'eng_Latn':
+            pass
+        else :
+            sentences = split_into_sentences(prompt_to_process)
+            if chat_request.src_lang != "eng_Latn" or chat_request.src_lang != "deu_Latn":
+                translation_payload = {
+                    "sentences": sentences,
+                    "src_lang": chat_request.src_lang,
+                    "tgt_lang": "eng_Latn"
+                }
+                translation_response = requests.post(
+                    f"{translation_api_url}/translate?src_lang={chat_request.src_lang}&tgt_lang=eng_Latn",
+                    json=translation_payload,
+                    headers={"accept": "application/json", "Content-Type": "application/json"}
+                )
+                translation_response.raise_for_status()
+                translation_result = translation_response.json()
+                prompt_to_process = " ".join(translation_result["translations"])
 
-            logger.debug(f"Translated prompt to English: {prompt_to_process}")
+                logger.debug(f"Translated prompt to English: {prompt_to_process}")
 
         current_time = time_to_words()
         client = get_openai_client(chat_request.model)
@@ -949,22 +952,26 @@ async def indic_chat(
 
         final_response = generated_response
 
-        sentences = split_into_sentences(final_response)
-        if chat_request.tgt_lang != "eng_Latn" or chat_request.tgt_lang != "deu_Latn" :
-            translation_payload = {
-                "sentences": sentences,
-                "src_lang": "eng_Latn",
-                "tgt_lang": chat_request.tgt_lang
-            }
-            translation_response = requests.post(
-                f"{translation_api_url}/translate?src_lang=eng_Latn&tgt_lang={chat_request.tgt_lang}",
-                json=translation_payload,
-                headers={"accept": "application/json", "Content-Type": "application/json"}
-            )
-            translation_response.raise_for_status()
-            translation_result = translation_response.json()
-            final_response = " ".join(translation_result["translations"])
-            logger.debug(f"Translated response to {chat_request.tgt_lang}: {final_response}")
+
+        if chat_request.src_lang == 'eng_Latn' and chat_request.tgt_lang == 'eng_Latn':
+            pass
+        else :
+            sentences = split_into_sentences(final_response)
+            if chat_request.tgt_lang != "eng_Latn" or chat_request.tgt_lang != "deu_Latn" :
+                translation_payload = {
+                    "sentences": sentences,
+                    "src_lang": "eng_Latn",
+                    "tgt_lang": chat_request.tgt_lang
+                }
+                translation_response = requests.post(
+                    f"{translation_api_url}/translate?src_lang=eng_Latn&tgt_lang={chat_request.tgt_lang}",
+                    json=translation_payload,
+                    headers={"accept": "application/json", "Content-Type": "application/json"}
+                )
+                translation_response.raise_for_status()
+                translation_result = translation_response.json()
+                final_response = " ".join(translation_result["translations"])
+                logger.debug(f"Translated response to {chat_request.tgt_lang}: {final_response}")
 
         return JSONResponse(content={"response": final_response})
 
