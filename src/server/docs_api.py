@@ -50,6 +50,7 @@ language_options = [
     "hin_Deva",  # Hindi
     "tam_Taml",  # Tamil
     "tel_Telu",  # Telugu
+    "deu_Latn",
 ]
 
 
