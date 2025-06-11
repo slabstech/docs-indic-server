@@ -749,7 +749,7 @@ async def indic_visual_query(
         elif prompt and not prompt.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
-        if source_language != target_language or source_language != "deu_Latn" or target_language != "deu_Latn":
+        if source_language != target_language and ( source_language != "deu_Latn" and target_language != "deu_Latn"):
 
             sentences = split_into_sentences(text_to_translate)
             translation_payload = {
