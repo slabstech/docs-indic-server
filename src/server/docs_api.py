@@ -934,7 +934,7 @@ async def indic_chat(
 
         else :
             sentences = split_into_sentences(prompt_to_process)
-            if chat_request.src_lang != "eng_Latn" or chat_request.src_lang != "deu_Latn":
+            if chat_request.src_lang != "eng_Latn" :
                 translation_payload = {
                     "sentences": sentences,
                     "src_lang": chat_request.src_lang,
@@ -975,7 +975,7 @@ async def indic_chat(
             pass
         else :
             sentences = split_into_sentences(final_response)
-            if chat_request.tgt_lang != "eng_Latn" or chat_request.tgt_lang != "deu_Latn" :
+            if chat_request.tgt_lang != "eng_Latn" :
                 translation_payload = {
                     "sentences": sentences,
                     "src_lang": "eng_Latn",
