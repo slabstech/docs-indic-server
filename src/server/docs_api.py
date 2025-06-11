@@ -916,6 +916,7 @@ async def indic_chat(
         prompt_to_process = chat_request.prompt
         if (chat_request.tgt_lang == "deu_Latn"):
             system_prompt = system_prompt + " return the reponse in German "
+            prompt_to_process = prompt_to_process + " return the response in German"
 
 
         if (chat_request.src_lang == chat_request.tgt_lang  and chat_request.src_lang == 'eng_Latn' ) :
