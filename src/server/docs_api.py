@@ -904,6 +904,7 @@ async def indic_chat(
 
     logger.debug(f"Received prompt: {chat_request.prompt}, src_lang: {chat_request.src_lang}, tgt_lang: {chat_request.tgt_lang}, model: {chat_request.model}")
 
+    current_time = time_to_words()
     try:
         if chat_request.src_lang not in language_options:
             raise HTTPException(status_code=400, detail=f"Invalid source language: {chat_request.src_lang}")
@@ -973,7 +974,6 @@ async def indic_chat(
 
                 logger.debug(f"Translated prompt to English: {prompt_to_process}")
 
-        current_time = time_to_words()
         client = get_openai_client(chat_request.model)
         response = client.chat.completions.create(
             model=chat_request.model,
