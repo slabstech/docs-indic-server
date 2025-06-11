@@ -760,9 +760,18 @@ async def indic_visual_query(
 
             return JSONResponse(content=result)
 
+        if ( source_language == "eng_Latn" and target_language == "eng_Latn"):
+            result = {
+                "extracted_text": response,
+                "translated_response": response,
+            }
+            logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, response_length={len(response)}")
+            if response:
+                result["response"] = response
 
+            return JSONResponse(content=result)
 
-        if source_language != target_language :
+        else :
 
             sentences = split_into_sentences(text_to_translate)
             translation_payload = {
