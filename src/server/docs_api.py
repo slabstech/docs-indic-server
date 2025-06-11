@@ -766,17 +766,20 @@ async def indic_visual_query(
                 "extracted_text": extracted_text,
                 "translated_response": translated_response,
             }
+            logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, translated_response_length={len(translated_response)}")
+
         else:
             result = {
                 "extracted_text": response,
                 "translated_response": response,
             }
+            logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, response_length={len(response)}")
+
 
 
         if response:
             result["response"] = response
 
-        logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, translated_response_length={len(translated_response)}")
         return JSONResponse(content=result)
 
     except requests.exceptions.RequestException as e:
