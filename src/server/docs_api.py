@@ -725,6 +725,10 @@ async def indic_visual_query(
         response = None
         text_to_translate = extracted_text
 
+        system_prompt = "You are dwani, a helpful assistant. Summarize your answer in maximum 1 sentence. If the answer contains numerical digits, convert the digits into words"
+
+        if target_language == "deu_Latn":
+            system_prompt = system_prompt + " return the reponse in German "
         result = {}
         if prompt and prompt.strip():
             client = get_openai_client(model)
@@ -733,7 +737,7 @@ async def indic_visual_query(
                 messages=[
                     {
                         "role": "system",
-                        "content": [{"type": "text", "text": "You are dwani, a helpful assistant. Summarize your answer in maximum 1 sentence. If the answer contains numerical digits, convert the digits into words"}]
+                        "content": [{"type": "text", "text": system_prompt}]
                     },
                     {"role": "user", "content": f"{prompt}\n\n{extracted_text}"}
                 ],
@@ -745,7 +749,7 @@ async def indic_visual_query(
         elif prompt and not prompt.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
-        if source_language != target_language:
+        if source_language != target_language or target_language == "deu_Latn":
 
             sentences = split_into_sentences(text_to_translate)
             translation_payload = {
@@ -800,7 +804,7 @@ async def indic_visual_query(
               400: {"description": "Invalid image, prompt"},
               500: {"description": "OCR error"}
           })
-async def indic_visual_query(
+async def indic_visual_query_direct(
     request: Request,
     file: UploadFile = File(..., description="PNG image file to analyze"),
     prompt: Optional[str] = Form(None, description="Optional custom prompt to process the extracted text"),
