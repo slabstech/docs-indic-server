@@ -727,7 +727,7 @@ async def indic_visual_query(
 
         system_prompt = "You are dwani, a helpful assistant. Summarize your answer in maximum 1 sentence. If the answer contains numerical digits, convert the digits into words"
 
-        if target_language == "deu_Latn":
+        if source_language == "deu_Latn" or target_language == "deu_Latn":
             system_prompt = system_prompt + " return the reponse in German "
         result = {}
         if prompt and prompt.strip():
@@ -749,7 +749,7 @@ async def indic_visual_query(
         elif prompt and not prompt.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
-        if source_language != target_language or target_language == "deu_Latn":
+        if source_language != target_language or source_language != "deu_Latn" or target_language != "deu_Latn":
 
             sentences = split_into_sentences(text_to_translate)
             translation_payload = {
