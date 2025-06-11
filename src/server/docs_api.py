@@ -912,7 +912,7 @@ async def indic_chat(
 
         prompt_to_process = chat_request.prompt
 
-        if (chat_request.src_lang == 'eng_Latn' and chat_request.tgt_lang == 'eng_Latn' ) or (chat_request.src_lang == 'english' and chat_request.tgt_lang == 'english' ) :
+        if (chat_request.src_lang == chat_request.tgt_lang  and chat_request.src_lang == 'eng_Latn' ) :
                 
             current_time = time_to_words()
             client = get_openai_client(chat_request.model)
@@ -971,7 +971,7 @@ async def indic_chat(
         final_response = generated_response
 
 
-        if (chat_request.src_lang == 'eng_Latn' and chat_request.tgt_lang == 'eng_Latn' )or (chat_request.src_lang == 'english' and chat_request.tgt_lang == 'english' ) :
+        if (chat_request.src_lang == chat_request.tgt_lang  and chat_request.src_lang == 'eng_Latn' ) :
             pass
         else :
             sentences = split_into_sentences(final_response)
