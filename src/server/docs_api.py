@@ -934,7 +934,7 @@ async def indic_chat(
             logger.debug(f"Generated response: {generated_response}")
             return JSONResponse(content={"response": generated_response})
         
-        if (chat_request.src_lang == "deu_Latn" or chat_request.tgt_lang == "deu_Latn"):
+        elif (chat_request.src_lang == "deu_Latn" or chat_request.tgt_lang == "deu_Latn"):
             system_prompt = system_prompt + " return the reponse in German "
 
             current_time = time_to_words()
