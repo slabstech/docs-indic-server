@@ -743,25 +743,27 @@ async def indic_visual_query(
         elif prompt and not prompt.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
-        sentences = split_into_sentences(text_to_translate)
-        translation_payload = {
-            "sentences": sentences,
-            "src_lang": source_language,
-            "tgt_lang": target_language
-        }
-        translation_response = requests.post(
-            f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={target_language}",
-            json=translation_payload,
-            headers={"accept": "application/json", "Content-Type": "application/json"}
-        )
-        translation_response.raise_for_status()
-        translation_result = translation_response.json()
-        translated_response = " ".join(translation_result["translations"])
+        if source_language != target_language:
 
-        result = {
-            "extracted_text": extracted_text,
-            "translated_response": translated_response
-        }
+            sentences = split_into_sentences(text_to_translate)
+            translation_payload = {
+                "sentences": sentences,
+                "src_lang": source_language,
+                "tgt_lang": target_language
+            }
+            translation_response = requests.post(
+                f"{translation_api_url}/translate?src_lang={source_language}&tgt_lang={target_language}",
+                json=translation_payload,
+                headers={"accept": "application/json", "Content-Type": "application/json"}
+            )
+            translation_response.raise_for_status()
+            translation_result = translation_response.json()
+            translated_response = " ".join(translation_result["translations"])
+
+            result = {
+                "extracted_text": extracted_text,
+                "translated_response": translated_response
+            }
         if response:
             result["response"] = response
 
