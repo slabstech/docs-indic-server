@@ -914,6 +914,9 @@ async def indic_chat(
 
         system_prompt = f"You are Dwani, a helpful assistant. Answer questions considering India as base country and Karnataka as base state. Provide a concise response in one sentence maximum. If the answer contains numerical digits, convert the digits into words. If user asks the time, then return answer as {current_time}"
         prompt_to_process = chat_request.prompt
+        if (chat_request.tgt_lang == "deu_Latn"):
+            system_prompt = system_prompt + " return the reponse in German "
+
 
         if (chat_request.src_lang == chat_request.tgt_lang  and chat_request.src_lang == 'eng_Latn' ) :
                 
@@ -975,26 +978,28 @@ async def indic_chat(
 
                 logger.debug(f"Translated prompt to English: {prompt_to_process}")
 
-        client = get_openai_client(chat_request.model)
-        response = client.chat.completions.create(
-            model=chat_request.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_prompt}]
-                },
-                {"role": "user", "content": [{"type": "text", "text": prompt_to_process}]}
-            ],
-            temperature=0.3,
-            max_tokens=settings.max_tokens
-        )
-        generated_response = response.choices[0].message.content
-        logger.debug(f"Generated response: {generated_response}")
+            client = get_openai_client(chat_request.model)
+            response = client.chat.completions.create(
+                model=chat_request.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": system_prompt}]
+                    },
+                    {"role": "user", "content": [{"type": "text", "text": prompt_to_process}]}
+                ],
+                temperature=0.3,
+                max_tokens=settings.max_tokens
+            )
+            generated_response = response.choices[0].message.content
+            logger.debug(f"Generated response: {generated_response}")
 
-        final_response = generated_response
+            final_response = generated_response
 
 
         if (chat_request.src_lang == chat_request.tgt_lang  and chat_request.src_lang == 'eng_Latn' ) :
+            pass
+        elif (chat_request.src_lang == chat_request.tgt_lang  and chat_request.src_lang == 'deu_Latn' ) :
             pass
         else :
             sentences = split_into_sentences(final_response)
@@ -1014,7 +1019,7 @@ async def indic_chat(
                 final_response = " ".join(translation_result["translations"])
                 logger.debug(f"Translated response to {chat_request.tgt_lang}: {final_response}")
 
-        return JSONResponse(content={"response": final_response})
+                return JSONResponse(content={"response": final_response})
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Translation API error: {str(e)}")
