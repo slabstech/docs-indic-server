@@ -912,8 +912,26 @@ async def indic_chat(
 
         prompt_to_process = chat_request.prompt
 
-        if (chat_request.src_lang == 'eng_Latn' and chat_request.tgt_lang == 'eng_Latn' )or (chat_request.src_lang == 'english' and chat_request.tgt_lang == 'english' ) :
-            pass
+        if (chat_request.src_lang == 'eng_Latn' and chat_request.tgt_lang == 'eng_Latn' ) or (chat_request.src_lang == 'english' and chat_request.tgt_lang == 'english' ) :
+                
+            current_time = time_to_words()
+            client = get_openai_client(chat_request.model)
+            response = client.chat.completions.create(
+                model=chat_request.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": f"You are Dwani, a helpful assistant. Answer questions considering India as base country and Karnataka as base state. Provide a concise response in one sentence maximum. If the answer contains numerical digits, convert the digits into words. If user asks the time, then return answer as {current_time}"}]
+                    },
+                    {"role": "user", "content": [{"type": "text", "text": prompt_to_process}]}
+                ],
+                temperature=0.3,
+                max_tokens=settings.max_tokens
+            )
+            generated_response = response.choices[0].message.content
+            logger.debug(f"Generated response: {generated_response}")
+            return JSONResponse(content={"response": final_response})
+
         else :
             sentences = split_into_sentences(prompt_to_process)
             if chat_request.src_lang != "eng_Latn" or chat_request.src_lang != "deu_Latn":
