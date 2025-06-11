@@ -52,6 +52,17 @@ language_options = [
     "tel_Telu",  # Telugu
 ]
 
+
+
+def split_into_sentences(text):
+    """Split a string into sentences based on full stops."""
+    if not text.strip():
+        return []
+    # Split on full stops, preserving non-empty sentences
+    sentences = [s.strip() for s in text.split('.') if s.strip()]
+    return sentences
+
+
 # Pydantic models
 class ExtractTextRequest(BaseModel):
     page_number: int = Field(default=1, description="The page number to extract text from (1-based indexing).", ge=1, example=1)
@@ -106,7 +117,7 @@ def get_openai_client(model: str) -> OpenAI:
         "deepseek-r1": "7885"
     }
     base_url = f"http://0.0.0.0:{model_ports[model]}/v1"
-    print(base_url)
+
     return OpenAI(api_key="http", base_url=base_url)
 
 def encode_image(image: BytesIO) -> str:
@@ -297,8 +308,10 @@ async def indic_custom_prompt_pdf(
         )
         response = custom_response.choices[0].message.content
 
+        sentences =split_into_sentences(response)
+
         translation_payload = {
-            "sentences": [response],
+            "sentences": sentences,
             "src_lang": source_language,
             "tgt_lang": target_language
         }
@@ -309,7 +322,8 @@ async def indic_custom_prompt_pdf(
         )
         translation_response.raise_for_status()
         translation_result = translation_response.json()
-        translated_response = translation_result["translations"][0]
+ 
+        translated_response = " ".join(translation_result["translations"])
 
         return JSONResponse(content={
             "original_text": extracted_text,
@@ -351,8 +365,10 @@ async def indic_summarize_pdf(
         )
         summary = summary_response.choices[0].message.content
 
+        sentences = split_into_sentences(summary)
+
         translation_payload = {
-            "sentences": [summary],
+            "sentences": sentences,
             "src_lang": src_lang,
             "tgt_lang": tgt_lang
         }
@@ -363,7 +379,8 @@ async def indic_summarize_pdf(
         )
         translation_response.raise_for_status()
         translation_result = translation_response.json()
-        translated_summary = translation_result["translations"][0]
+
+        translated_summary = " ".join(translation_result["translations"])
 
         return JSONResponse(content={
             "original_text": extracted_text,
@@ -376,15 +393,6 @@ async def indic_summarize_pdf(
         raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
-
-def split_into_sentences(text):
-    """Split a string into sentences based on full stops."""
-    if not text.strip():
-        return []
-    # Split on full stops, preserving non-empty sentences
-    sentences = [s.strip() for s in text.split('.') if s.strip()]
-    return sentences
 
 @app.post("/indic-extract-text/")
 async def indic_extract_text_from_pdf(
@@ -427,10 +435,8 @@ async def indic_extract_text_from_pdf(
             )
             translation_response.raise_for_status()
             translation_result = translation_response.json()
-            print(translation_result)
 
             combined_translation = " ".join(translation_result["translations"])
-            print(combined_translation)  # Output: Hello Bonjour Hola
 
             translated_content = combined_translation
         except requests.exceptions.RequestException as e:
@@ -736,8 +742,9 @@ async def indic_visual_query(
         elif prompt and not prompt.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
+        sentences = split_into_sentences(text_to_translate)
         translation_payload = {
-            "sentences": [text_to_translate],
+            "sentences": sentences,
             "src_lang": source_language,
             "tgt_lang": target_language
         }
@@ -748,7 +755,7 @@ async def indic_visual_query(
         )
         translation_response.raise_for_status()
         translation_result = translation_response.json()
-        translated_response = translation_result["translations"][0]
+        translated_response = " ".join(translation_result["translations"])
 
         result = {
             "extracted_text": extracted_text,
@@ -872,9 +879,11 @@ async def indic_chat(
             raise HTTPException(status_code=400, detail=f"Invalid target language: {chat_request.tgt_lang}")
 
         prompt_to_process = chat_request.prompt
+
+        sentences = split_into_sentences(prompt_to_process)
         if chat_request.src_lang != "eng_Latn":
             translation_payload = {
-                "sentences": [chat_request.prompt],
+                "sentences": sentences,
                 "src_lang": chat_request.src_lang,
                 "tgt_lang": "eng_Latn"
             }
@@ -885,7 +894,8 @@ async def indic_chat(
             )
             translation_response.raise_for_status()
             translation_result = translation_response.json()
-            prompt_to_process = translation_result["translations"][0]
+            prompt_to_process = " ".join(translation_result["translations"])
+
             logger.debug(f"Translated prompt to English: {prompt_to_process}")
 
         current_time = time_to_words()
@@ -906,9 +916,11 @@ async def indic_chat(
         logger.debug(f"Generated response: {generated_response}")
 
         final_response = generated_response
+
+        sentences = split_into_sentences(final_response)
         if chat_request.tgt_lang != "eng_Latn":
             translation_payload = {
-                "sentences": [generated_response],
+                "sentences": sentences,
                 "src_lang": "eng_Latn",
                 "tgt_lang": chat_request.tgt_lang
             }
@@ -919,7 +931,7 @@ async def indic_chat(
             )
             translation_response.raise_for_status()
             translation_result = translation_response.json()
-            final_response = translation_result["translations"][0]
+            final_response = " ".join(translation_result["translations"])
             logger.debug(f"Translated response to {chat_request.tgt_lang}: {final_response}")
 
         return JSONResponse(content={"response": final_response})
