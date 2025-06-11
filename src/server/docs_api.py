@@ -27,8 +27,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 from num2words import num2words
 from datetime import datetime
 import pytz
-import dwani
-
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -379,6 +377,15 @@ async def indic_summarize_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+
+def split_into_sentences(text):
+    """Split a string into sentences based on full stops."""
+    if not text.strip():
+        return []
+    # Split on full stops, preserving non-empty sentences
+    sentences = [s.strip() for s in text.split('.') if s.strip()]
+    return sentences
+
 @app.post("/indic-extract-text/")
 async def indic_extract_text_from_pdf(
     file: UploadFile = File(...),
@@ -405,10 +412,22 @@ async def indic_extract_text_from_pdf(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
 
+        sentences = split_into_sentences(page_content)
         try:
-            response = dwani.Translate.run_translate(sententence=page_content, src_lang=src_lang, tgt_lang=tgt_lang)
             
-            translated_content = response["translations"][0]
+            translation_payload = {
+                "sentences": sentences,
+                "src_lang": src_lang,
+                "tgt_lang": tgt_lang
+            }
+            translation_response = requests.post(
+                f"{translation_api_url}/translate?src_lang={src_lang}&tgt_lang={tgt_lang}",
+                json=translation_payload,
+                headers={"accept": "application/json", "Content-Type": "application/json"}
+            )
+            translation_response.raise_for_status()
+            translation_result = translation_response.json()
+            translated_content = translation_result["translations"][0]
         except requests.exceptions.RequestException as e:
             raise HTTPException(status_code=500, detail=f"Error translating: {str(e)}")
 
