@@ -749,7 +749,20 @@ async def indic_visual_query(
         elif prompt and not prompt.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
-        if source_language != target_language and ( source_language != "deu_Latn" and target_language != "deu_Latn"):
+        if ( source_language == "deu_Latn" or target_language == "deu_Latn"):
+            result = {
+                "extracted_text": response,
+                "translated_response": response,
+            }
+            logger.debug(f"Indic visual query successful: extracted_text_length={len(extracted_text)}, response_length={len(response)}")
+            if response:
+                result["response"] = response
+
+            return JSONResponse(content=result)
+
+
+
+        if source_language != target_language :
 
             sentences = split_into_sentences(text_to_translate)
             translation_payload = {
