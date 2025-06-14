@@ -86,7 +86,7 @@ def get_openai_client(model: str) -> OpenAI:
     
     model_ports = {
         "qwen3": "7880",
-        "gemma3": "7890",
+        "gemma3": "8000",
         "moondream": "7882",
         "qwen2.5vl": "7883",
         "sarvam-m": "7884",
