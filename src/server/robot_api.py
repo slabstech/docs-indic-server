@@ -5,25 +5,13 @@ import base64
 import json
 from io import BytesIO
 from PIL import Image
-import tempfile
-import os
 import requests
 from typing import List, Union, Optional
-from pypdf import PdfReader
 from pydantic import BaseModel, Field
-from olmocr.data.renderpdf import render_pdf_to_base64png
-from olmocr.prompts import build_finetuning_prompt
-from olmocr.prompts.anchor import get_anchor_text
 import argparse
 import uvicorn
 from time import time
 from logging_config import logger
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
-import pdfplumber
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
 from num2words import num2words
 from datetime import datetime
 import pytz
