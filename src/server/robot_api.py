@@ -272,7 +272,7 @@ async def chat_direct(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@app.post("/visual-query-raw/",
+@app.post("/visual-query-raw",
 summary="Raw Visual Query with Prompt",
 description="Process a prompt with a selected LLM model and return the response.",
 tags=["Chat"],
