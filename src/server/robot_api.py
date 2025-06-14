@@ -242,7 +242,7 @@ async def chat_direct(
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     logger.debug(f"Received prompt: {chat_request.prompt},  model: {chat_request.model}")
-
+    print("chant -anaser")
     try:
 
         prompt_to_process = chat_request.prompt
@@ -288,6 +288,7 @@ async def visual_query_raw(
     if not prompt or not prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
+    print("coming-direct")
     logger.info("alledRaw");
     logger.info(prompt)
     logger.info(model)
