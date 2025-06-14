@@ -288,6 +288,9 @@ async def visual_query_raw(
     if not prompt or not prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
+    logger.info("alledRaw");
+    logger.info(prompt)
+    logger.info(model)
     try:
         client = get_openai_client(model)  # Replace with your LLM client getter
         # No streaming: get the full response at once
@@ -302,6 +305,8 @@ async def visual_query_raw(
         response_text = response_obj.choices[0].message.content
         return JSONResponse(content=response_text)
     except Exception as e:
+        logger.error(f"Error processing request: {str(e)}")
+
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 @app.middleware("http")
